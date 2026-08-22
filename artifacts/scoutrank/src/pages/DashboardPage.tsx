@@ -323,7 +323,7 @@ export default function DashboardPage() {
         <div className="flex flex-col items-end gap-2">
           <div className="flex-col items-end gap-1 hidden sm:flex">
             <div className="text-xs text-sr-purple-light uppercase tracking-widest font-semibold">ScoutRank</div>
-            <ScoreRing score={myScore} size={72} />
+            <ScoreRing score={myScore} size={88} />
           </div>
           {isAdmin && (
             <Button variant="brand" size="sm" icon={<Shield className="h-4 w-4" />} onClick={() => navigate('/admin')}>
@@ -668,7 +668,7 @@ export default function DashboardPage() {
                       {row.profiles.first_name?.[0]}{row.profiles.last_name?.[0]}
                     </div>
                     <span className={`text-sm flex-1 truncate ${i < 3 ? 'text-white font-medium' : 'text-sr-silver'}`}>{fullName(row.profiles)}</span>
-                    <ScoreRing score={row.rank_score} size={38} />
+                    <ScoreRing score={row.rank_score} size={48} />
                   </Link>
                 ))}
               </div>

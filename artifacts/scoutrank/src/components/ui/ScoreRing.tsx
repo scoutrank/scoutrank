@@ -65,10 +65,10 @@ export function ScoreRing({ score, size = 64, strokeWidth, className }: ScoreRin
       <div className="absolute inset-0 flex items-center justify-center">
         {isRanked ? (
           <span
-            className="font-display font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-sr-silver leading-none"
-            style={{ fontSize: size * 0.28 }}
+            className="font-display font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-sr-silver leading-none whitespace-nowrap"
+            style={{ fontSize: size * 0.19 }}
           >
-            {Math.round(score)}
+            {score.toFixed(2)}
           </span>
         ) : (
           <span
