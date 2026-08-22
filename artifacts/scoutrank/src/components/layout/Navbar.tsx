@@ -378,10 +378,12 @@ export function Navbar() {
                 )}
               </div>
 
-              {/* Profile */}
+              {/* Profile — visible at every width (not just lg:) so Settings,
+                  Sign Out, Verification, Parent Access and Admin stay reachable
+                  on mobile. The bottom tab bar below doesn't carry these. */}
               <div ref={profileRef} className="relative">
                 <button onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false); }}
-                  className="hidden lg:flex items-center gap-2 p-1 hover:bg-sr-surface-light rounded-full transition-colors">
+                  className="flex items-center gap-2 p-1 hover:bg-sr-surface-light rounded-full transition-colors">
                   <div className="h-8 w-8 rounded-full overflow-hidden flex-shrink-0 avatar-ring">
                     {profile?.avatar_url ? (
                       <img src={profile.avatar_url} alt="" className="h-full w-full object-cover rounded-full" />
