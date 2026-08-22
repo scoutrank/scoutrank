@@ -6,6 +6,7 @@ import { supabase, fullName, displayScoutRank, displayRole } from '@/lib/supabas
 import { triggerPostModeration } from '@/lib/postModeration';
 import { TrendUpIcon, TrendDownIcon } from '@/components/icons';
 import { getTrustMeta, TrustBadge } from '@/components/ui/TrustBadge';
+import { ScoreRing } from '@/components/ui/ScoreRing';
 import type { Profile, Post, ClubInvite, Organisation } from '@/lib/supabase';
 import {
   BarChart3, TrendingUp, Award, FileText, Sparkles,
@@ -320,14 +321,10 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
-          {myScore !== null ? (
-            <div className="text-right hidden sm:block">
-              <div className="text-xs text-sr-purple-light uppercase tracking-widest font-semibold mb-1">ScoutRank</div>
-              <div className="text-3xl font-display font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-sr-silver drop-shadow-md">{displayScoutRank(myScore)}</div>
-            </div>
-          ) : (
-            <div className="px-3 py-1.5 rounded-full bg-sr-surface border border-sr-border text-xs text-sr-silver font-medium hidden sm:block">Unranked</div>
-          )}
+          <div className="flex-col items-end gap-1 hidden sm:flex">
+            <div className="text-xs text-sr-purple-light uppercase tracking-widest font-semibold">ScoutRank</div>
+            <ScoreRing score={myScore} size={72} />
+          </div>
           {isAdmin && (
             <Button variant="brand" size="sm" icon={<Shield className="h-4 w-4" />} onClick={() => navigate('/admin')}>
               Admin
@@ -671,7 +668,7 @@ export default function DashboardPage() {
                       {row.profiles.first_name?.[0]}{row.profiles.last_name?.[0]}
                     </div>
                     <span className={`text-sm flex-1 truncate ${i < 3 ? 'text-white font-medium' : 'text-sr-silver'}`}>{fullName(row.profiles)}</span>
-                    <span className="text-sm font-display font-bold text-transparent bg-clip-text bg-gradient-to-br from-white to-sr-silver">{displayScoutRank(row.rank_score)}</span>
+                    <ScoreRing score={row.rank_score} size={38} />
                   </Link>
                 ))}
               </div>
