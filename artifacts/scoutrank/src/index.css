@@ -166,39 +166,49 @@ body {
 }
 
 /* ── Inputs ─────────────────────────────────────────────────────── */
-.input-dark {
-  background: #0B1230;
-  border: 1px solid #1A2260;
-  color: #E8E9F0;
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-  transition: all 0.2s;
-  width: 100%;
-}
-.input-dark::placeholder { color: #8B8FA8; }
-.input-dark:focus {
-  outline: none;
-  border-color: #8A3FFC;
-  box-shadow: 0 0 0 3px rgba(138,63,252,0.15);
-}
+/* Wrapped in @layer components so that per-instance Tailwind utility
+   classes (e.g. pl-9, pl-10 used to make room for a leading icon) can
+   correctly override this base padding. Tailwind v4's utilities are
+   generated inside CSS @layers, and per the cascade-layers spec,
+   unlayered CSS always beats layered CSS regardless of source order —
+   so without this wrapper, `padding: 0.75rem 1rem` below was always
+   winning over any pl-9/pl-10 class applied alongside .input-dark,
+   pushing input text and placeholders behind the leading icon. */
+@layer components {
+  .input-dark {
+    background: #0B1230;
+    border: 1px solid #1A2260;
+    color: #E8E9F0;
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    transition: all 0.2s;
+    width: 100%;
+  }
+  .input-dark::placeholder { color: #8B8FA8; }
+  .input-dark:focus {
+    outline: none;
+    border-color: #8A3FFC;
+    box-shadow: 0 0 0 3px rgba(138,63,252,0.15);
+  }
 
-.select-dark {
-  background: #0B1230;
-  border: 1px solid #1A2260;
-  color: #E8E9F0;
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-  transition: all 0.2s;
-  width: 100%;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%238B8FA8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 1rem center;
-}
-.select-dark:focus {
-  outline: none;
-  border-color: #8A3FFC;
-  box-shadow: 0 0 0 3px rgba(138,63,252,0.15);
+  .select-dark {
+    background: #0B1230;
+    border: 1px solid #1A2260;
+    color: #E8E9F0;
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    transition: all 0.2s;
+    width: 100%;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%238B8FA8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+  }
+  .select-dark:focus {
+    outline: none;
+    border-color: #8A3FFC;
+    box-shadow: 0 0 0 3px rgba(138,63,252,0.15);
+  }
 }
 
 /* ── Rank Badges ────────────────────────────────────────────────── */
