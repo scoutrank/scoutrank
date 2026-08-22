@@ -711,7 +711,7 @@ export default function OrganisationProfilePage() {
                             <div key={r.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-sr-surface border border-sr-border">
                               <div className="flex items-center gap-2 min-w-0">
                                 <div className="h-7 w-7 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-sr-purple to-sr-blue flex items-center justify-center text-white text-[10px] font-bold">
-                                  {r.avatar_url ? <img src={r.avatar_url} alt="" className="h-full w-full object-cover" /> : `${r.first_name?.[0]}${r.last_name?.[0]}`}
+                                  {r.avatar_url ? <img src={r.avatar_url} alt="" className="h-full w-full object-cover" /> : `${r.first_name?.[0] ?? ''}${r.last_name?.[0] ?? ''}`}
                                 </div>
                                 <p className="text-xs text-white truncate">{fullName(r)} <span className="text-sr-text-muted">@{r.username}</span></p>
                               </div>
@@ -821,7 +821,7 @@ export default function OrganisationProfilePage() {
                             <div key={r.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-sr-surface border border-sr-border">
                               <div className="flex items-center gap-2 min-w-0">
                                 <div className="h-7 w-7 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-sr-purple to-sr-blue flex items-center justify-center text-white text-[10px] font-bold">
-                                  {r.avatar_url ? <img src={r.avatar_url} alt="" className="h-full w-full object-cover" /> : `${r.first_name?.[0]}${r.last_name?.[0]}`}
+                                  {r.avatar_url ? <img src={r.avatar_url} alt="" className="h-full w-full object-cover" /> : `${r.first_name?.[0] ?? ''}${r.last_name?.[0] ?? ''}`}
                                 </div>
                                 <p className="text-xs text-white truncate">{fullName(r)} <span className="text-sr-text-muted">@{r.username}</span></p>
                               </div>
@@ -880,7 +880,7 @@ export default function OrganisationProfilePage() {
                       <div key={r.id} className="card-premium p-3 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="h-9 w-9 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-sr-purple to-sr-blue flex items-center justify-center text-white text-xs font-bold">
-                            {r.profiles.avatar_url ? <img src={r.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : `${r.profiles.first_name?.[0]}${r.profiles.last_name?.[0]}`}
+                            {r.profiles.avatar_url ? <img src={r.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : `${r.profiles.first_name?.[0] ?? ''}${r.profiles.last_name?.[0] ?? ''}`}
                           </div>
                           <p className="text-sm text-white truncate">{fullName(r.profiles)}</p>
                         </div>
@@ -1012,7 +1012,7 @@ export default function OrganisationProfilePage() {
                                 <div key={s.id} className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-sr-surface border border-sr-border">
                                   <div className="flex items-center gap-2 min-w-0">
                                     <div className="h-6 w-6 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-sr-purple to-sr-blue flex items-center justify-center text-white text-[9px] font-bold">
-                                      {s.profiles.avatar_url ? <img src={s.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : `${s.profiles.first_name?.[0]}${s.profiles.last_name?.[0]}`}
+                                      {s.profiles.avatar_url ? <img src={s.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : `${s.profiles.first_name?.[0] ?? ''}${s.profiles.last_name?.[0] ?? ''}`}
                                     </div>
                                     <p className="text-xs text-sr-silver truncate">{fullName(s.profiles)}</p>
                                   </div>
@@ -1053,7 +1053,7 @@ export default function OrganisationProfilePage() {
                                 <div key={p.id} className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-sr-surface border border-sr-border">
                                   <div className="flex items-center gap-2 min-w-0">
                                     <div className="h-6 w-6 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-sr-purple to-sr-blue flex items-center justify-center text-white text-[9px] font-bold">
-                                      {p.profiles.avatar_url ? <img src={p.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : `${p.profiles.first_name?.[0]}${p.profiles.last_name?.[0]}`}
+                                      {p.profiles.avatar_url ? <img src={p.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : `${p.profiles.first_name?.[0] ?? ''}${p.profiles.last_name?.[0] ?? ''}`}
                                     </div>
                                     <p className="text-xs text-sr-silver truncate">{fullName(p.profiles)}</p>
                                   </div>
@@ -1204,7 +1204,7 @@ export default function OrganisationProfilePage() {
                     <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-sr-surface border border-sr-border">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="h-9 w-9 rounded-lg overflow-hidden flex-shrink-0 bg-gradient-to-br from-sr-purple to-sr-blue flex items-center justify-center text-white text-xs font-bold">
-                          {s.profiles.avatar_url ? <img src={s.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : `${s.profiles.first_name?.[0]}${s.profiles.last_name?.[0]}`}
+                          {s.profiles.avatar_url ? <img src={s.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : `${s.profiles.first_name?.[0] ?? ''}${s.profiles.last_name?.[0] ?? ''}`}
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm text-white truncate">{fullName(s.profiles)}</p>

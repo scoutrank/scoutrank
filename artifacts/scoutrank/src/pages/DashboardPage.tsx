@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/BrandButton';
 import { supabase, fullName, displayScoutRank, displayRole } from '@/lib/supabase';
@@ -240,6 +240,14 @@ export default function DashboardPage() {
   };
 
   if (!profile) return null;
+
+  // Club-owning accounts don't have a personal athlete dashboard — their
+  // club page IS their dashboard. Send them straight there instead of ever
+  // rendering the athlete-oriented stats/score/completeness UI below.
+  // Mirrors the same redirect already used on AthleteProfilePage.
+  if (profile.owned_organisation_id) {
+    return <Navigate to={`/organisation/${profile.owned_organisation_id}`} replace />;
+  }
 
   // Calculate profile completeness based on actual data
   let completeness = 10;
