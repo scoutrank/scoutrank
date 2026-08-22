@@ -407,7 +407,10 @@ export function Navbar() {
                         { icon: Building2, label: 'My Club', to: `/organisation/${profile?.owned_organisation_id}`, show: !!profile?.owned_organisation_id },
                         { icon: BarChart3, label: 'Dashboard', to: '/dashboard', show: profile?.role !== 'parent' },
                         { icon: Users, label: 'Parent Access', to: '/parent/link-requests', show: profile?.role === 'athlete' },
-                        { icon: Shield, label: 'Verification', to: '/verification-status', show: profile?.role === 'coach' || profile?.role === 'scout' },
+                        // Club-owner accounts are 'coach'-role under the hood, but
+                        // their club was already vetted on approval — personal
+                        // coach/scout verification doesn't apply to them.
+                        { icon: Shield, label: 'Verification', to: '/verification-status', show: (profile?.role === 'coach' || profile?.role === 'scout') && !profile?.owned_organisation_id },
                         { icon: Settings, label: 'Settings', to: '/settings', show: true },
                         { icon: Shield, label: 'Admin', to: '/admin', show: isAdmin },
                       ].filter(item => item.show).map((item) => {

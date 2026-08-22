@@ -46,7 +46,10 @@ export default function SettingsPage() {
                 {tab.label}
               </button>
             ))}
-            {(profile?.role === 'coach' || profile?.role === 'scout') && (
+            {/* Club-owner accounts are 'coach'-role under the hood, but
+                their club was already vetted on approval — personal
+                coach/scout verification doesn't apply to them. */}
+            {(profile?.role === 'coach' || profile?.role === 'scout') && !profile?.owned_organisation_id && (
               <Link to="/verification-status"
                 className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-sr-text-muted hover:text-white hover:bg-sr-surface-light transition-all">
                 <Shield className="h-4 w-4" />

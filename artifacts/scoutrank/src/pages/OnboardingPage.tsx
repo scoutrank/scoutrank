@@ -25,6 +25,12 @@ export default function OnboardingPage() {
   const navigate = useNavigate();
   const isCoachOrScout = profile?.role === 'coach' || profile?.role === 'scout';
   const isParent = profile?.role === 'parent';
+  // Club-owner accounts are 'coach'-role under the hood, but their club
+  // was already vetted when its application was approved — asking them
+  // to also submit personal coach/scout verification is redundant, so
+  // they skip this step entirely and get the same "Almost Done" screen
+  // athletes see.
+  const needsCoachVerification = isCoachOrScout && !profile?.owned_organisation_id;
 
   // Parents skip onboarding entirely — they have no sport/bio step.
   if (isParent) {
@@ -265,8 +271,8 @@ export default function OnboardingPage() {
 
     // Coach/scout go to the verification form (they saw the "Verify Now / Later"
     // prompt in step 4 and chose "Complete Profile" which implies Verify Now).
-    // Athletes go straight to dashboard.
-    setTimeout(() => navigate(isCoachOrScout ? '/verification-status' : '/dashboard'), 1500);
+    // Club owners and athletes go straight to dashboard.
+    setTimeout(() => navigate(needsCoachVerification ? '/verification-status' : '/dashboard'), 1500);
   }
 
   if (completed) {
@@ -589,7 +595,7 @@ export default function OnboardingPage() {
             )}
 
             {currentStep === 4 && (
-              isCoachOrScout ? (
+              needsCoachVerification ? (
                 <div className="space-y-5">
                   <h2 className="text-lg font-semibold text-white">Verify Your Account</h2>
                   <p className="text-sm text-sr-text-muted leading-relaxed">
