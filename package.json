@@ -1,0 +1,25 @@
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "MIT",
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "preinstall": "sh -c 'case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Notice: this is a pnpm workspace (uses pnpm catalog + workspace: protocol). Installing with npm/yarn will only install the root package and will not wire up the internal @workspace/* packages. Run: corepack enable && pnpm install\" >&2 ;; esac'",
+    "dev": "corepack enable 1>&2 && pnpm install 1>&2 && pnpm --filter @workspace/scoutrank run dev",
+    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "build:scoutrank": "corepack enable 1>&2 && pnpm install 1>&2 && pnpm --filter @workspace/scoutrank run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+  },
+  "private": true,
+  "dependencies": {
+    "@replit/connectors-sdk": "^0.4.1"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.5",
+    "typescript": "~5.9.3"
+  }
+}

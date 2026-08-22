@@ -1,0 +1,97 @@
+--- artifacts/scoutrank/src/components/layout/Navbar.tsx
++++ artifacts/scoutrank/src/components/layout/Navbar.tsx
+@@ -255,10 +255,10 @@
+   };
+ 
+   return (
+     <nav className="sticky top-0 z-50 bg-sr-bg/90 backdrop-blur-xl border-b border-sr-border">
+-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
++      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+         <Link to={isAuthenticated ? '/dashboard' : '/'} className="flex-shrink-0">
+           <Logo size="sm" withText={true} />
+         </Link>
+ 
+@@ -266,35 +266,34 @@
+           <div className="hidden md:flex items-center gap-1">
+             {navLinks.map(link => (
+               <Link key={link.to} to={link.to}
+                 className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-sr-text-muted hover:text-white hover:bg-sr-surface-light rounded-lg transition-colors">
+                 <link.icon className="h-4 w-4" />{link.label}
+               </Link>
+             ))}
+           </div>
+         )}
+ 
+         <div className="flex items-center gap-2">
+           {isAuthenticated ? (
+             <>
+               <button onClick={() => navigate('/discover')}
+-                className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm text-sr-text-muted bg-sr-surface border border-sr-border rounded-lg hover:border-sr-purple/50 transition-colors">
++                className="hidden md:flex items-center gap-2 px-3 py-2 text-sm text-sr-text-muted bg-sr-surface border border-sr-border rounded-lg hover:border-sr-purple/50 transition-colors">
+                 <Search className="h-4 w-4" />
+                 <span className="w-32 text-left">Search athletes...</span>
+               </button>
+ 
+               {/* Notifications */}
+               <div ref={notifRef} className="relative">
+                 <button onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false); }}
+                   className="relative p-2 text-sr-text-muted hover:text-white hover:bg-sr-surface-light rounded-lg transition-colors">
+                   <Bell className="h-5 w-5" />
+                   {unreadCount > 0 && (
+                     <span className="absolute -top-0.5 -right-0.5 h-4 w-4 bg-sr-purple text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                       {unreadCount > 9 ? '9+' : unreadCount}
+                     </span>
+                   )}
+                 </button>
+                 {notifOpen && (
+                   <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-80 bg-sr-surface border border-sr-border rounded-xl shadow-2xl overflow-hidden z-50">
+                     <div className="p-3 border-b border-sr-border flex items-center justify-between">
+                       <span className="text-sm font-semibold text-white">Notifications</span>
+@@ -340,11 +339,11 @@
+               {/* Profile */}
+               <div ref={profileRef} className="relative">
+                 <button onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false); }}
+-                  className="flex items-center gap-2 p-1.5 hover:bg-sr-surface-light rounded-lg transition-colors">
+-                  <div className="h-8 w-8 rounded-lg overflow-hidden flex-shrink-0">
++                  className="hidden md:flex items-center gap-2 p-1 hover:bg-sr-surface-light rounded-full transition-colors">
++                  <div className="h-8 w-8 rounded-full overflow-hidden flex-shrink-0 avatar-ring">
+                     {profile?.avatar_url ? (
+                       <img src={profile.avatar_url} alt="" className="h-full w-full object-cover rounded-full" />
+                     ) : (
+                       <div className="h-full w-full bg-gradient-to-br from-sr-purple to-sr-blue flex items-center justify-center text-white text-xs font-bold rounded-full">
+                         {profile?.first_name?.[0]}{profile?.last_name?.[0]}
+                       </div>
+@@ -387,24 +386,22 @@
+             <div className="flex items-center gap-2">
+               <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>Log In</Button>
+               <Button variant="brand" size="sm" onClick={() => navigate('/signup')}>Sign Up</Button>
+             </div>
+           )}
+-
+-          <button onClick={() => setMobileOpen(!mobileOpen)} className="md:hidden p-2 text-sr-text-muted hover:text-white">
+-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+-          </button>
+         </div>
+       </div>
+ 
+-      {mobileOpen && isAuthenticated && (
+-        <div className="md:hidden border-t border-sr-border bg-sr-bg">
+-          <div className="p-3 space-y-1">
+-            {navLinks.map(link => (
++      {isAuthenticated && (
++        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-sr-surface/90 backdrop-blur-xl border-t border-sr-border pb-safe">
++          <div className="flex items-center justify-around p-2">
++            <Link to="/dashboard" className="flex flex-col items-center p-2 text-sr-text-muted hover:text-white"><BarChart3 className="h-5 w-5" /><span className="text-[10px] mt-1">Home</span></Link>
++            {navLinks.map(link => (
+               <Link key={link.to} to={link.to} onClick={() => setMobileOpen(false)}
+-                className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-sr-text-muted hover:text-white hover:bg-sr-surface-light rounded-lg transition-colors">
+-                <link.icon className="h-4 w-4" />{link.label}
++                className="flex flex-col items-center p-2 text-sr-text-muted hover:text-white transition-colors">
++                <link.icon className="h-5 w-5" /><span className="text-[10px] mt-1">{link.label}</span>
+               </Link>
+             ))}
++            <Link to={`/profile/${profile?.username}`} className="flex flex-col items-center p-2 text-sr-text-muted hover:text-white"><User className="h-5 w-5" /><span className="text-[10px] mt-1">Profile</span></Link>
+           </div>
+         </div>
+       )}
+     </nav>

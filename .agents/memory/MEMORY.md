@@ -1,0 +1,3 @@
+- [Groq AI setup](groq-setup.md) — frontend-only Groq calls using VITE_GROQ_API_KEY; lib/groq.ts has groqChat + groqStream helpers
+- [ScoutRank admin tab bug](scoutrank-admin-tab.md) — duplicate 'reports' tab was in adminTabs array; disputes/verifications were const not useState
+- [Supabase URL auto-correct](supabase-url-bug.md) — VITE_SUPABASE_URL is wrong (JWT instead of URL); supabase.ts auto-corrects it to https://gmgjpbiiqjaidhtuhkpx.supabase.co

@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/scout-bot/"
+title = "Scout Bot AI"
+version = "1.0.0"
+id = "artifacts/scout-bot"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/scout-bot/" ]
+localPort = 23612
+
+[services.development]
+run = "pnpm --filter @workspace/scout-bot run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/scout-bot", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/scout-bot/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23612"
+BASE_PATH = "/scout-bot/"

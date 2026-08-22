@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "ScoutRank"
+version = "1.0.0"
+id = "artifacts/scoutrank"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18790
+
+[services.development]
+run = "pnpm --filter @workspace/scoutrank run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/scoutrank", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/scoutrank/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18790"
+BASE_PATH = "/"
