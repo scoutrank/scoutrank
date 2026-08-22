@@ -12,11 +12,14 @@ import { LocationPicker } from '@/components/LocationPicker';
 
 type SettingTab = 'profile' | 'privacy' | 'notifications' | 'appearance' | 'security' | 'wearables';
 
-const ALL_SETTING_TABS: { id: SettingTab; label: string; icon: typeof Settings; hideForParent?: boolean }[] = [
+const ALL_SETTING_TABS: { id: SettingTab; label: string; icon: typeof Settings; hideForParent?: boolean; hideForClub?: boolean; hideForCoachOrScout?: boolean }[] = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'privacy', label: 'Privacy', icon: Shield, hideForParent: true },
   { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'wearables', label: 'Wearables', icon: Watch, hideForParent: true },
+  // Wearables (Fitbit etc.) sync an individual's own activity data — doesn't
+  // apply to a club account (no personal stats to sync) or to coach/scout
+  // accounts (they're not tracking their own athletic activity either).
+  { id: 'wearables', label: 'Wearables', icon: Watch, hideForParent: true, hideForClub: true, hideForCoachOrScout: true },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'security', label: 'Security', icon: Lock },
 ];
@@ -24,7 +27,15 @@ const ALL_SETTING_TABS: { id: SettingTab; label: string; icon: typeof Settings; 
 export default function SettingsPage() {
   const { profile, user, logout, logoutAllDevices, refreshProfile } = useAuth();
   const isParent = profile?.role === 'parent';
-  const settingTabs = ALL_SETTING_TABS.filter(t => !(isParent && t.hideForParent));
+  // Club-owner accounts are 'coach'-role under the hood, but this login
+  // represents the club itself, not a person — so the personal-athlete
+  // settings below (name, bio, rankings visibility, wearables) don't apply.
+  const isClub = !!profile?.owned_organisation_id;
+  // Non-club coaches and scouts are real people, but Wearables specifically
+  // (personal activity-tracker sync) doesn't apply to them either.
+  const isCoachOrScout = profile?.role === 'coach' || profile?.role === 'scout';
+  const settingTabs = ALL_SETTING_TABS.filter(t =>
+    !(isParent && t.hideForParent) && !(isClub && t.hideForClub) && !(isCoachOrScout && t.hideForCoachOrScout));
   const [activeTab, setActiveTab] = useState<SettingTab>('profile');
 
   return (
@@ -110,6 +121,10 @@ function ProfileTab({ profile, refreshProfile }: { profile: any; refreshProfile:
   const bannerRef = useRef<HTMLInputElement>(null);
   const isParent = profile?.role === 'parent';
   const isAthlete = profile?.role === 'athlete';
+  // Club-owner accounts are 'coach'-role under the hood, but this login is
+  // the club itself, not a person — its name/bio/logo live on the
+  // organisation record and are edited from My Club → Manage instead.
+  const isClub = !!profile?.owned_organisation_id;
   const [recruitmentOpen, setRecruitmentOpen] = useState(profile?.recruitment_open ?? false);
   const [recruitmentSeeking, setRecruitmentSeeking] = useState<string[]>(profile?.recruitment_seeking ?? []);
   const [academicInfo, setAcademicInfo] = useState(profile?.academic_info ?? '');
@@ -238,26 +253,39 @@ function ProfileTab({ profile, refreshProfile }: { profile: any; refreshProfile:
             onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f, 'avatar', setUploadingAvatar, setAvatarUrl); }} />
         </div>
       </div>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-sr-silver mb-1.5">First Name</label>
-          <input className="input-dark" value={firstName} onChange={e => setFirstName(e.target.value)} />
+      {isClub ? (
+        <div className="p-3 rounded-lg bg-sr-surface border border-sr-border text-sm text-sr-text-muted">
+          This login represents <span className="text-white font-medium">your club</span>, not a person —
+          its name, logo, bio and other public details are edited from{' '}
+          <Link to={`/organisation/${profile?.owned_organisation_id}`} className="text-sr-purple-light hover:text-white">
+            My Club → Manage
+          </Link>{' '}
+          instead.
         </div>
-        <div>
-          <label className="block text-sm font-medium text-sr-silver mb-1.5">Last Name</label>
-          <input className="input-dark" value={lastName} onChange={e => setLastName(e.target.value)} />
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-sr-silver mb-1.5">First Name</label>
+            <input className="input-dark" value={firstName} onChange={e => setFirstName(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-sr-silver mb-1.5">Last Name</label>
+            <input className="input-dark" value={lastName} onChange={e => setLastName(e.target.value)} />
+          </div>
         </div>
-      </div>
+      )}
       <div>
         <label className="block text-sm font-medium text-sr-silver mb-1.5">Username</label>
         <input className="input-dark opacity-60 cursor-not-allowed" value={profile?.username ?? ''} readOnly
           title="Username cannot be changed" />
         <p className="text-xs text-sr-text-muted mt-1">Username cannot be changed.</p>
       </div>
-      <div>
-        <label className="block text-sm font-medium text-sr-silver mb-1.5">Location</label>
-        <LocationPicker city={city} state={state} onChange={(c, s) => { setCity(c); setState(s); }} />
-      </div>
+      {!isClub && (
+        <div>
+          <label className="block text-sm font-medium text-sr-silver mb-1.5">Location</label>
+          <LocationPicker city={city} state={state} onChange={(c, s) => { setCity(c); setState(s); }} />
+        </div>
+      )}
       {isAthlete && (
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
@@ -272,8 +300,8 @@ function ProfileTab({ profile, refreshProfile }: { profile: any; refreshProfile:
           </div>
         </div>
       )}
-      {/* Bio — athletes/coaches/scouts only */}
-      {!isParent && (
+      {/* Bio — athletes/coaches/scouts only (not clubs — bio lives on the organisation record) */}
+      {!isParent && !isClub && (
         <div>
           <label className="block text-sm font-medium text-sr-silver mb-1.5">Bio</label>
           <textarea className="input-dark h-24 resize-none" placeholder="Tell your sporting story..."
@@ -386,6 +414,9 @@ function PrivacyTab({ profile, refreshProfile }: { profile: Profile | null | und
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  // Club-owner accounts have no personal rankings/stats of their own to
+  // show or hide — those toggles only make sense for a person.
+  const isClub = !!profile?.owned_organisation_id;
 
   const handleSave = async () => {
     if (!profile) return;
@@ -422,8 +453,10 @@ function PrivacyTab({ profile, refreshProfile }: { profile: Profile | null | und
 
       {[
         { label: 'Public Profile', desc: 'Allow coaches and scouts to discover your profile in Discover', value: isPublic, set: setIsPublic },
-        { label: 'Show Rankings', desc: 'Display your rankings on your profile to other visitors', value: showRankings, set: setShowRankings },
-        { label: 'Show Stats', desc: 'Make your stats tab visible to other visitors', value: showStats, set: setShowStats },
+        ...(isClub ? [] : [
+          { label: 'Show Rankings', desc: 'Display your rankings on your profile to other visitors', value: showRankings, set: setShowRankings },
+          { label: 'Show Stats', desc: 'Make your stats tab visible to other visitors', value: showStats, set: setShowStats },
+        ]),
       ].map(s => (
         <div key={s.label} className="flex items-center justify-between p-3 rounded-xl bg-sr-surface border border-sr-border">
           <div>

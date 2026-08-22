@@ -253,6 +253,11 @@ export default function DashboardPage() {
 
   const isParent = profile.role === 'parent';
   const isAthlete = profile.role === 'athlete';
+  // ScoutRank score is a personal, verified-stat-based ranking — it doesn't
+  // apply to admins, coaches, scouts, or club-owner logins (clubs are
+  // 'coach'-role accounts under the hood), so the score ring is hidden for
+  // those roles.
+  const showScoreRing = !isAdmin && profile.role !== 'coach' && profile.role !== 'scout';
 
   const suggestedActions = [
     { icon: Upload, label: 'Upload a Highlight', desc: 'Add game footage or clips', to: `/profile/${profile.username}?tab=highlights`, show: isAthlete },
@@ -321,10 +326,12 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <div className="flex-col items-end gap-1 hidden sm:flex">
-            <div className="text-xs text-sr-purple-light uppercase tracking-widest font-semibold">ScoutRank</div>
-            <ScoreRing score={myScore} size={88} />
-          </div>
+          {showScoreRing && (
+            <div className="flex-col items-end gap-1 hidden sm:flex">
+              <div className="text-xs text-sr-purple-light uppercase tracking-widest font-semibold">ScoutRank</div>
+              <ScoreRing score={myScore} size={88} />
+            </div>
+          )}
           {isAdmin && (
             <Button variant="brand" size="sm" icon={<Shield className="h-4 w-4" />} onClick={() => navigate('/admin')}>
               Admin
