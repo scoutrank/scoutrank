@@ -1465,10 +1465,14 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
   // Personal best: the best value (direction-aware, per the event's own
   // higher_is_better flag) among this athlete's OWN stats for that exact
   // event type — computed here, not stored, so it's always correct
-  // against whatever's currently loaded.
+  // against whatever's currently loaded. Only ever compared among VERIFIED
+  // stats — a pending stat hasn't been confirmed yet and a rejected/disputed
+  // one has been rejected or is still being argued about, so none of those
+  // should be able to carry the "Personal Best" badge even if their raw
+  // value happens to be the best on record.
   const personalBestIds = new Set<string>();
   for (const et of eventTypes) {
-    const rowsForEvent = stats.filter(s => s.stat_event_type_id === et.id);
+    const rowsForEvent = stats.filter(s => s.stat_event_type_id === et.id && s.verification_status === 'verified');
     if (rowsForEvent.length === 0) continue;
     const best = rowsForEvent.reduce((acc, cur) =>
       (et.higher_is_better ? cur.value > acc.value : cur.value < acc.value) ? cur : acc
@@ -1986,6 +1990,7 @@ function HighlightsTab({ isOwner, profileId, profileName }: { isOwner: boolean; 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [highlights, setHighlights] = useState<HighlightItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
@@ -1993,6 +1998,62 @@ function HighlightsTab({ isOwner, profileId, profileName }: { isOwner: boolean; 
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploadType, setUploadType] = useState<'image' | 'video'>('image');
   const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // This tab used to never load existing highlights at all — `highlights`
+  // only ever grew from `hl-${Date.now()}` items appended locally after a
+  // fresh upload in the current session, so a page refresh (or any other
+  // visitor) always saw an empty tab regardless of how much was actually
+  // uploaded. It also saved new highlights with `sport_tag: 'highlight'`
+  // instead of `post_type: 'highlight'`, so nothing was tagged in a way this
+  // query could find anyway. Matching on EITHER field picks up both the
+  // mistagged historical rows and correctly-tagged new ones below.
+  const load = () => {
+    setIsLoading(true);
+    supabase.from('posts').select('id, caption, media_url, media_type, created_at')
+      .eq('profile_id', profileId)
+      .or('post_type.eq.highlight,sport_tag.eq.highlight')
+      .order('created_at', { ascending: false })
+      .then(({ data, error: e }) => {
+        if (e) console.error('Failed to load highlights:', e.message);
+        const rows = (data as { id: string; caption: string | null; media_url: string | null; media_type: string | null; created_at: string }[] | null) ?? [];
+        setHighlights(
+          rows.filter(r => r.media_url).map(r => ({
+            id: r.id,
+            title: r.caption || 'Highlight',
+            mediaUrl: r.media_url as string,
+            mediaType: r.media_type === 'video' ? 'video' : 'image',
+            createdAt: r.created_at,
+          }))
+        );
+        setIsLoading(false);
+      });
+  };
+  useEffect(() => { load(); }, [profileId]);
+
+  const handleDeleteHighlight = async (hl: HighlightItem) => {
+    if (deletingId) return;
+    setDeletingId(hl.id);
+    const { error: delErr } = await supabase.from('posts').delete().eq('id', hl.id).eq('profile_id', profileId);
+    if (delErr) {
+      console.error('Failed to delete highlight:', delErr.message);
+      setDeletingId(null);
+      return;
+    }
+    setHighlights(prev => prev.filter(h => h.id !== hl.id));
+    setDeletingId(null);
+    // Best-effort storage cleanup, same non-fatal pattern as stat evidence —
+    // the DB row (which is what every other view actually reads) is already gone.
+    try {
+      const marker = '/post-media/';
+      const idx = hl.mediaUrl.indexOf(marker);
+      if (idx !== -1) {
+        await supabase.storage.from('post-media').remove([hl.mediaUrl.slice(idx + marker.length)]);
+      }
+    } catch {
+      // non-fatal
+    }
+  };
   const fileRef = useRef<HTMLInputElement>(null);
 
   // A video/photo recorded via the dedicated /record-highlight page (TikTok-
@@ -2041,10 +2102,13 @@ function HighlightsTab({ isOwner, profileId, profileName }: { isOwner: boolean; 
     const mediaType = uploadType === 'image' ? 'photo' : 'video';
     const { data: insertedPost, error } = await supabase.from('posts').insert({
       profile_id: profileId,
+      // Was `sport_tag: 'highlight'` — post_type is the field every other
+      // page (Explore, Performance Passport) actually filters on to find
+      // highlights, so this was the reason none of them ever surfaced there.
+      post_type: 'highlight',
       caption: uploadTitle || 'New highlight!',
       media_url: uploadPreview,
       media_type: mediaType,
-      sport_tag: 'highlight',
     }).select('id').single();
     setIsPosting(false);
     if (error) {
@@ -2053,23 +2117,16 @@ function HighlightsTab({ isOwner, profileId, profileName }: { isOwner: boolean; 
       return;
     }
     if (insertedPost) triggerPostModeration((insertedPost as { id: string }).id, uploadPreview, mediaType);
-    // Only add to the local highlights list once the real post is
-    // confirmed saved — previously this ran unconditionally before the
-    // insert even attempted, so a failed/duplicate request could still
-    // show a phantom highlight that was never actually saved.
-    const hl: HighlightItem = {
-      id: `hl-${Date.now()}`,
-      title: uploadTitle || 'Highlight',
-      mediaUrl: uploadPreview,
-      mediaType: uploadType,
-      createdAt: new Date().toISOString(),
-    };
-    setHighlights(h => [hl, ...h]);
     setShowUpload(false);
     setUploadPreview(null);
     setUploadTitle('');
     setError('');
+    load(); // refresh from the DB so the new highlight shows up with its real id (needed to delete it later)
   };
+
+  if (isLoading) {
+    return <div className="card-premium p-12 text-center text-sm text-sr-text-muted">Loading highlights...</div>;
+  }
 
   if (highlights.length === 0 && !showUpload) {
     return (
@@ -2166,6 +2223,15 @@ function HighlightsTab({ isOwner, profileId, profileName }: { isOwner: boolean; 
                     </div>
                   </div>
                 )}
+              {isOwner && (
+                <button
+                  onClick={() => handleDeleteHighlight(hl)}
+                  disabled={deletingId === hl.id}
+                  title="Delete highlight"
+                  className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center text-white/80 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100">
+                  {deletingId === hl.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                </button>
+              )}
             </div>
             <div className="p-3">
               <p className="text-sm font-medium text-white">{hl.title}</p>
@@ -2200,6 +2266,7 @@ function AchievementsTab({ isOwner, profileId, profileName }: { isOwner: boolean
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
@@ -2252,6 +2319,32 @@ function AchievementsTab({ isOwner, profileId, profileName }: { isOwner: boolean
     setShowAdd(false);
     setTitle(''); setDescription(''); setMediaUrl(null); setMediaType(null); setError('');
     load();
+  };
+
+  // Owner-only — there was previously no way to remove an achievement once
+  // posted, even one added by mistake or with the wrong media attached.
+  const handleDeleteAchievement = async (item: AchievementPost) => {
+    if (deletingId) return;
+    setDeletingId(item.id);
+    const { error: delErr } = await supabase.from('posts').delete().eq('id', item.id).eq('profile_id', profileId);
+    if (delErr) {
+      console.error('Failed to delete achievement:', delErr.message);
+      setDeletingId(null);
+      return;
+    }
+    setItems(prev => prev.filter(i => i.id !== item.id));
+    setDeletingId(null);
+    try {
+      if (item.media_url) {
+        const marker = '/post-media/';
+        const idx = item.media_url.indexOf(marker);
+        if (idx !== -1) {
+          await supabase.storage.from('post-media').remove([item.media_url.slice(idx + marker.length)]);
+        }
+      }
+    } catch {
+      // non-fatal — DB row is already gone
+    }
   };
 
   return (
@@ -2313,12 +2406,23 @@ function AchievementsTab({ isOwner, profileId, profileName }: { isOwner: boolean
           {items.map(item => (
             <div key={item.id} className="card-premium overflow-hidden">
               {/* Achievement badge header */}
-              <div className="px-5 pt-4 pb-2 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-400 text-[11px] font-semibold tracking-wide">
-                  <Trophy className="h-3 w-3" /> Achievement
-                </span>
-                {item.achievement_title && (
-                  <p className="text-sm font-semibold text-white">{item.achievement_title}</p>
+              <div className="px-5 pt-4 pb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-400 text-[11px] font-semibold tracking-wide flex-shrink-0">
+                    <Trophy className="h-3 w-3" /> Achievement
+                  </span>
+                  {item.achievement_title && (
+                    <p className="text-sm font-semibold text-white truncate">{item.achievement_title}</p>
+                  )}
+                </div>
+                {isOwner && (
+                  <button
+                    onClick={() => handleDeleteAchievement(item)}
+                    disabled={deletingId === item.id}
+                    title="Delete achievement"
+                    className="p-1 rounded text-sr-text-muted hover:text-red-400 transition-colors flex-shrink-0">
+                    {deletingId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  </button>
                 )}
               </div>
               {/* Media */}
