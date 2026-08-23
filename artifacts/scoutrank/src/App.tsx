@@ -4,13 +4,21 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Layout } from '@/components/layout/Layout';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+// LandingPage is the one page kept in the eager/main bundle — it's what a
+// brand-new visitor (a QR code on a business card/brochure, an ad, a shared
+// link) actually lands on first, so it needs to paint immediately. Every
+// other route below is lazy-loaded: previously most of the *consumer* app
+// (Dashboard, Feed, Profile, Rankings, Discover, Settings, Scout Bot, etc.)
+// was imported eagerly too, meaning a first-time visitor's browser had to
+// download and parse the entire logged-in app before the landing page could
+// even render — the main cause of the slow first load on mobile data.
 import LandingPage from '@/pages/LandingPage';
-import LoginPage from '@/pages/LoginPage';
-import TermsPage from '@/pages/TermsPage';
-import PrivacyPolicyPage from '@/pages/PrivacyPolicyPage';
-import CommunityGuidelinesPage from '@/pages/CommunityGuidelinesPage';
-import ContactPage from '@/pages/ContactPage';
-import ParentViewConversationPage from '@/pages/ParentViewConversationPage';
+const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const TermsPage = lazy(() => import('@/pages/TermsPage'));
+const PrivacyPolicyPage = lazy(() => import('@/pages/PrivacyPolicyPage'));
+const CommunityGuidelinesPage = lazy(() => import('@/pages/CommunityGuidelinesPage'));
+const ContactPage = lazy(() => import('@/pages/ContactPage'));
+const ParentViewConversationPage = lazy(() => import('@/pages/ParentViewConversationPage'));
 const PerformancePassportPage = lazy(() => import('@/pages/PerformancePassportPage'));
 const MarketplacePage = lazy(() => import('@/pages/MarketplacePage'));
 const CreateListingPage = lazy(() => import('@/pages/CreateListingPage'));
@@ -26,38 +34,38 @@ const EditListingPage = lazy(() => import('@/pages/EditListingPage'));
 const AdminEvidenceReportsPage = lazy(() => import('@/pages/AdminEvidenceReportsPage'));
 const ClaimOrRegisterClubPage = lazy(() => import('@/pages/ClaimOrRegisterClubPage'));
 const AdminOrganisationClaimsPage = lazy(() => import('@/pages/AdminOrganisationClaimsPage'));
-import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
-import ResetPasswordPage from '@/pages/ResetPasswordPage';
-import VerificationStatusPage from '@/pages/VerificationStatusPage';
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
+const VerificationStatusPage = lazy(() => import('@/pages/VerificationStatusPage'));
 const AdminVerificationPage = lazy(() => import('@/pages/AdminVerificationPage'));
 const AdminOrganisationsPage = lazy(() => import('@/pages/AdminOrganisationsPage'));
 const AdminOrganisationRequestsPage = lazy(() => import('@/pages/AdminOrganisationRequestsPage'));
-import OrganisationProfilePage from '@/pages/OrganisationProfilePage';
-import ParentDashboardPage from '@/pages/ParentDashboardPage';
-import ParentLinkRequestsPage from '@/pages/ParentLinkRequestsPage';
+const OrganisationProfilePage = lazy(() => import('@/pages/OrganisationProfilePage'));
+const ParentDashboardPage = lazy(() => import('@/pages/ParentDashboardPage'));
+const ParentLinkRequestsPage = lazy(() => import('@/pages/ParentLinkRequestsPage'));
 const AdminPendingStatsPage = lazy(() => import('@/pages/AdminPendingStatsPage'));
 const AdminReportsPage = lazy(() => import('@/pages/AdminReportsPage'));
 const AdminDisputesPage = lazy(() => import('@/pages/AdminDisputesPage'));
 const AdminFlaggedContentPage = lazy(() => import('@/pages/AdminFlaggedContentPage'));
-import SignupPage from '@/pages/SignupPage';
-import OnboardingPage from '@/pages/OnboardingPage';
-import DashboardPage from '@/pages/DashboardPage';
-import AthleteProfilePage from '@/pages/AthleteProfilePage';
-import ProfilePage from '@/pages/ProfilePage';
-import FeedPage from '@/pages/FeedPage';
-import PostDetailPage from '@/pages/PostDetailPage';
-import RankingsPage from '@/pages/RankingsPage';
-import DiscoverPage from '@/pages/DiscoverPage';
-import ClubPage from '@/pages/ClubPage';
-import SettingsPage from '@/pages/SettingsPage';
+const SignupPage = lazy(() => import('@/pages/SignupPage'));
+const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const AthleteProfilePage = lazy(() => import('@/pages/AthleteProfilePage'));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
+const FeedPage = lazy(() => import('@/pages/FeedPage'));
+const PostDetailPage = lazy(() => import('@/pages/PostDetailPage'));
+const RankingsPage = lazy(() => import('@/pages/RankingsPage'));
+const DiscoverPage = lazy(() => import('@/pages/DiscoverPage'));
+const ClubPage = lazy(() => import('@/pages/ClubPage'));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const AdminDashboardPage = lazy(() => import('@/pages/AdminDashboardPage'));
-import ExplorePage from '@/pages/ExplorePage';
-import SinglePostViewPage from '@/pages/SinglePostViewPage';
-import ScoutBotPage from '@/pages/ScoutBotPage';
-import AccountRestrictedPage from '@/pages/AccountRestrictedPage';
+const ExplorePage = lazy(() => import('@/pages/ExplorePage'));
+const SinglePostViewPage = lazy(() => import('@/pages/SinglePostViewPage'));
+const ScoutBotPage = lazy(() => import('@/pages/ScoutBotPage'));
+const AccountRestrictedPage = lazy(() => import('@/pages/AccountRestrictedPage'));
 const ClubSignupPage = lazy(() => import('@/pages/ClubSignupPage'));
 const ClubApplicationPendingPage = lazy(() => import('@/pages/ClubApplicationPendingPage'));
-import RecordHighlightPage from '@/pages/RecordHighlightPage';
+const RecordHighlightPage = lazy(() => import('@/pages/RecordHighlightPage'));
 const AdminDeletionRequestsPage = lazy(() => import('@/pages/AdminDeletionRequestsPage'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
