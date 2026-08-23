@@ -43,6 +43,33 @@ function resolveMediaKind(mediaUrl: string | null, mediaType: 'photo' | 'video' 
   return null;
 }
 
+// ── Instagram-home-style inline autoplay for feed videos ──────────────────
+// Only one video across the whole feed plays at a time, the same rule
+// Explore/Reels uses — but here it's inline in the normal scroll list
+// instead of a full-screen snap view, and playback follows scroll position
+// automatically rather than a single "active card" index. A module-level
+// singleton (rather than lifting state into FeedPage) keeps every
+// FeedPostCard able to coordinate without threading an index/context
+// through a long, independently-paginated list.
+let activeAutoplayVideo: HTMLVideoElement | null = null;
+
+// Marks a video as being paused/played by OUR autoplay logic (not the
+// viewer tapping the native controls) so the pause/play listeners below
+// can tell the difference — the flag lives on the element itself so it
+// works even when a DIFFERENT card's effect is the one doing the pausing
+// (handing off from the previously-active video to a newly-scrolled-into
+// -view one).
+function autoplayPause(video: HTMLVideoElement) {
+  if (!video.paused) {
+    (video as HTMLVideoElement & { __autoplayControlled?: boolean }).__autoplayControlled = true;
+    video.pause();
+  }
+}
+function autoplayPlay(video: HTMLVideoElement) {
+  (video as HTMLVideoElement & { __autoplayControlled?: boolean }).__autoplayControlled = true;
+  video.play().catch(() => {});
+}
+
 type FeedTab = 'home' | 'following';
 type ViewMode = 'feed' | 'messages' | 'conversations';
 
@@ -1224,6 +1251,11 @@ export function FeedPostCard({
   const [reactionCount, setReactionCount] = useState(initialReactionCount);
   const [reactionPending, setReactionPending] = useState(false);
   const feedVideoRef = useRef<HTMLVideoElement>(null);
+  const mediaKind = resolveMediaKind(post.media_url, post.media_type);
+  // True once the viewer has explicitly paused this video via the native
+  // controls — scrolling it back into view then leaves it paused instead
+  // of forcing it to resume, same courtesy Explore/Reels gives.
+  const userPausedVideoRef = useRef(false);
 
   const loadComments = () => {
     setIsLoadingComments(true);
@@ -1293,26 +1325,72 @@ export function FeedPostCard({
     setReactionCount(initialReactionCount);
   }, [initialReacted, initialReactionCount]);
 
-  // Switching browser tabs pauses this post's video (if it's playing) and
-  // resumes from the same spot when you come back — same as Explore/Reels.
-  const pausedByVisibilityRef = useRef(false);
+  // Instagram-home-style autoplay: this video plays (muted, looping) once
+  // scrolled far enough into view, pauses once scrolled away, and only one
+  // video across the whole feed plays at a time (activeAutoplayVideo, module
+  // scope above) — same rule as Explore/Reels, but inline rather than
+  // full-screen. Also pauses on tab-switch and resumes on return.
   useEffect(() => {
-    const handleVisibility = () => {
-      const video = feedVideoRef.current;
-      if (!video) return;
-      if (document.hidden) {
-        if (!video.paused) {
-          video.pause();
-          pausedByVisibilityRef.current = true;
+    const video = feedVideoRef.current;
+    if (!video || mediaKind !== 'video') return;
+
+    // Muted once on mount, imperatively — required for the browser to allow
+    // autoplay without a prior tap. Deliberately not a JSX `muted` prop:
+    // this card re-renders often (comments, reactions, etc.) and React
+    // re-applies `muted` on every render, which would keep re-muting a
+    // video the viewer had just manually unmuted via the native controls.
+    video.muted = true;
+
+    const onPause = () => {
+      const el = video as HTMLVideoElement & { __autoplayControlled?: boolean };
+      if (el.__autoplayControlled) el.__autoplayControlled = false;
+      else userPausedVideoRef.current = true;
+    };
+    const onPlay = () => {
+      const el = video as HTMLVideoElement & { __autoplayControlled?: boolean };
+      if (el.__autoplayControlled) el.__autoplayControlled = false;
+      else userPausedVideoRef.current = false;
+    };
+    video.addEventListener('pause', onPause);
+    video.addEventListener('play', onPlay);
+
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          if (userPausedVideoRef.current) return;
+          if (activeAutoplayVideo && activeAutoplayVideo !== video) autoplayPause(activeAutoplayVideo);
+          activeAutoplayVideo = video;
+          autoplayPlay(video);
+        } else {
+          if (activeAutoplayVideo === video) activeAutoplayVideo = null;
+          autoplayPause(video);
         }
-      } else if (pausedByVisibilityRef.current) {
-        pausedByVisibilityRef.current = false;
-        video.play().catch(() => {});
+      },
+      { threshold: 0.6 },
+    );
+    obs.observe(video);
+
+    // Switching browser tabs pauses this post's video (if it's playing) and
+    // resumes from the same spot when you come back — same as Explore/Reels.
+    let pausedByVisibility = false;
+    const handleVisibility = () => {
+      if (document.hidden) {
+        if (!video.paused) { autoplayPause(video); pausedByVisibility = true; }
+      } else if (pausedByVisibility) {
+        pausedByVisibility = false;
+        if (!userPausedVideoRef.current) autoplayPlay(video);
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, []);
+
+    return () => {
+      obs.disconnect();
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('play', onPlay);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (activeAutoplayVideo === video) activeAutoplayVideo = null;
+    };
+  }, [mediaKind]);
 
   const [showLikeBurst, setShowLikeBurst] = useState(false);
   const [burstKey, setBurstKey] = useState(0);
@@ -1596,7 +1674,12 @@ export function FeedPostCard({
               <img src={post.media_url} alt="" className="max-h-[480px] w-auto max-w-full object-contain" />
             )}
             {kind === 'video' && (
-              <video ref={feedVideoRef} src={post.media_url} controls className="max-h-[480px] w-auto max-w-full" />
+              // playsInline is what stops iOS Safari from forcing this into
+              // full-screen the moment it starts playing — without it,
+              // autoplay-on-scroll would yank the viewer into a full-screen
+              // player instead of playing quietly inline like Instagram's
+              // main feed does.
+              <video ref={feedVideoRef} src={post.media_url} controls playsInline loop className="max-h-[480px] w-auto max-w-full" />
             )}
             {kind === 'audio' && (
               <div className="p-4 w-full">
