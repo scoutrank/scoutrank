@@ -462,10 +462,13 @@ export function Navbar() {
                   { to: '/combine', label: 'Combine', icon: ShoppingBag },
                   { to: '/scout-bot', label: 'Scout Bot', icon: Bot },
                   // Club-owning accounts land on their club page here too —
-                  // same reasoning as the desktop dropdown above.
+                  // same reasoning as the desktop dropdown above. Everyone
+                  // else gets Discover — Profile is already reachable from
+                  // the avatar dropdown at every width (see comment above),
+                  // so it doesn't need its own slot down here too.
                   profile?.owned_organisation_id
                     ? { to: `/organisation/${profile.owned_organisation_id}`, label: 'Club', icon: Building2 }
-                    : { to: `/profile/${profile?.username}`, label: 'Profile', icon: User },
+                    : { to: '/discover', label: 'Discover', icon: Search },
                 ]
             ).map(link => (
               <Link key={link.to} to={link.to}

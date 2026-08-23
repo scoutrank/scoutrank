@@ -29,9 +29,14 @@ function renderMarkdown(text: string): string {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/^### (.+)$/gm, '<h3 class="text-sm font-bold text-white mt-3 mb-1">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-base font-bold text-white mt-3 mb-1">$2</h2>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-base font-bold text-white mt-3 mb-1">$1</h2>')
     .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
-    .replace(/(<li[\s\S]+?<\/li>)/g, '<ul class="space-y-0.5 my-1.5">$1</ul>')
+    // Wrap each run of consecutive bullet lines in a single <ul> — matching
+    // greedily line-by-line here (rather than the old non-greedy pattern,
+    // which stopped at the first </li> and wrapped every bullet in its own
+    // <ul>, stacking extra margin between every line of a list) so a
+    // multi-item list renders as one compact block like it's meant to.
+    .replace(/(?:<li[\s\S]*?<\/li>\s*)+/g, m => `<ul class="space-y-0.5 my-1.5">${m}</ul>`)
     .replace(/\n\n/g, '<br/><br/>')
     .replace(/\n/g, '<br/>');
 }

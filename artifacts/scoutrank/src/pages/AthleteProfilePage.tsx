@@ -735,7 +735,9 @@ export default function AthleteProfilePage() {
           {activeTab === 'stats' && profile.role === 'athlete' && (isOwner || profile.show_stats) && <StatsTab isOwner={isOwner} profileId={profile.id} ownerRole={profile.role} />}
           {activeTab === 'highlights' && profile.role === 'athlete' && <HighlightsTab isOwner={isOwner} profileId={profile.id} profileName={profile.first_name} />}
           {activeTab === 'achievements' && profile.role === 'athlete' && <AchievementsTab isOwner={isOwner} profileId={profile.id} profileName={profile.first_name} />}
-          {activeTab === 'rankings' && profile.role === 'athlete' && (isOwner || profile.show_rankings) && <RankingsTab />}
+          {activeTab === 'rankings' && profile.role === 'athlete' && (isOwner || profile.show_rankings) && (
+            <RankingsTab profileId={profile.id} rankScore={rankScore} rankSport={rankSport} rankPoolCount={rankPoolCount} />
+          )}
           {activeTab === 'scoring' && profile.role === 'athlete' && <ScoringTab profileId={profile.id} />}
           {activeTab === 'posts' && profile.role !== 'athlete' && <PostsTab profileId={profile.id} />}
           {activeTab === 'listings' && <ListingsTab profileId={profile.id} isOwner={isOwner} />}
@@ -2330,12 +2332,53 @@ function AchievementsTab({ isOwner, profileId, profileName }: { isOwner: boolean
   );
 }
 
-function RankingsTab() {
+// Was a hardcoded "Not Yet Ranked" placeholder regardless of the athlete's
+// actual rank — contradicting the ScoutRank Score banner above (which
+// already reads the real rank from the `rankings` table). Now it reads
+// that same rankScore/rankSport/rankPoolCount the banner uses, so the two
+// never disagree, and only falls back to the placeholder when the athlete
+// genuinely has no ranking row yet.
+function RankingsTab({ profileId, rankScore, rankSport, rankPoolCount }: {
+  profileId: string; rankScore: number | null; rankSport: string | null; rankPoolCount: number | null;
+}) {
+  const [position, setPosition] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (rankScore === null || !rankSport) { setPosition(null); return; }
+    let active = true;
+    supabase.from('rankings').select('profile_id, rank_score')
+      .eq('sport', rankSport).eq('division', 'Open')
+      .order('rank_score', { ascending: false })
+      .then(({ data }) => {
+        if (!active) return;
+        const rows = (data as { profile_id: string; rank_score: number }[]) ?? [];
+        const idx = rows.findIndex(r => r.profile_id === profileId);
+        setPosition(idx >= 0 ? idx + 1 : null);
+      });
+    return () => { active = false; };
+  }, [profileId, rankScore, rankSport]);
+
+  if (rankScore === null) {
+    return (
+      <div className="card-premium p-12 text-center">
+        <TrendingUp className="h-12 w-12 mx-auto text-sr-text-muted mb-4" />
+        <h3 className="text-lg font-semibold text-white mb-2">Not Yet Ranked</h3>
+        <p className="text-sm text-sr-text-muted">Add verified achievements and stats to start climbing the rankings. Rankings are calculated across local, state, national and global levels.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="card-premium p-12 text-center">
-      <TrendingUp className="h-12 w-12 mx-auto text-sr-text-muted mb-4" />
-      <h3 className="text-lg font-semibold text-white mb-2">Not Yet Ranked</h3>
-      <p className="text-sm text-sr-text-muted">Add verified achievements and stats to start climbing the rankings. Rankings are calculated across local, state, national and global levels.</p>
+    <div className="card-premium p-8 text-center">
+      <TrendingUp className="h-12 w-12 mx-auto text-sr-purple-light mb-4" />
+      <div className="text-4xl font-display font-bold gradient-text-brand mb-1">{displayScoutRank(rankScore)}</div>
+      <div className="text-xs text-sr-text-muted uppercase tracking-wide mb-4">ScoutRank Score{rankSport ? ` · ${rankSport}` : ''}</div>
+      {position !== null && (
+        <div className="text-lg font-semibold text-white mb-1">
+          #{position}{rankPoolCount !== null && <span className="text-sm text-sr-text-muted font-normal"> of {rankPoolCount}</span>}
+        </div>
+      )}
+      {rankPoolCount !== null && <div className="flex justify-center mt-2"><TrustBadge poolCount={rankPoolCount} /></div>}
     </div>
   );
 }
