@@ -1615,7 +1615,11 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
             </label>
             <Select value={competitionLevel} onChange={setCompetitionLevel} className="w-full"
               options={COMPETITION_LEVEL_OPTIONS} placeholder="Select the level this was achieved at" />
-            <p className="text-xs text-sr-text-muted mt-1">
+            {/* Shorter copy below sm — the full sentence wrapped onto 3-4
+                lines on a phone and made the form feel dense; same info,
+                fewer words. Desktop keeps the original full sentence. */}
+            <p className="text-xs text-sr-text-muted mt-1 sm:hidden">Affects your ScoutRank score.</p>
+            <p className="text-xs text-sr-text-muted mt-1 hidden sm:block">
               How competitive was the setting? This affects your ScoutRank score alongside the result itself.
             </p>
           </div>
@@ -1631,7 +1635,8 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
               className="input-dark w-full resize-none"
               placeholder="e.g. I'm wearing guernsey #7, no headgear, dark hair in a ponytail — playing forward for the blue team."
             />
-            <p className="text-xs text-sr-text-muted mt-1">
+            <p className="text-xs text-sr-text-muted mt-1 sm:hidden">Used to verify your evidence — jersey #, headgear, appearance.</p>
+            <p className="text-xs text-sr-text-muted mt-1 hidden sm:block">
               Jersey/guernsey number, headgear (and colour if worn), and a brief description of what you look like — this is what AI checks your evidence against.
             </p>
           </div>
@@ -1666,7 +1671,10 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
               <input ref={evidenceFileRef} type="file" accept="image/*,video/*"
                 onChange={handleEvidenceUpload} className="hidden" />
               {!evidenceUrl && !isUploadingEvidence && (
-                <p className="text-xs text-sr-text-muted mt-1">Required — proof is needed for admin verification. Large videos upload in the background and will resume automatically if your connection drops.</p>
+                <>
+                  <p className="text-xs text-sr-text-muted mt-1 sm:hidden">Required for verification. Large videos upload in the background.</p>
+                  <p className="text-xs text-sr-text-muted mt-1 hidden sm:block">Required — proof is needed for admin verification. Large videos upload in the background and will resume automatically if your connection drops.</p>
+                </>
               )}
             </div>
           </div>

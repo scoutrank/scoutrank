@@ -335,7 +335,14 @@ export function Navbar() {
                   )}
                 </button>
                 {notifOpen && (
-                  <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-80 bg-sr-surface border border-sr-border rounded-xl shadow-2xl overflow-hidden z-50">
+                  // fixed + left-4/right-4 on mobile (rather than absolute
+                  // right-0, which anchors to this bell's own small
+                  // wrapper — not the screen edge — and was pushing the
+                  // panel off the LEFT edge of the viewport on phones,
+                  // since the bell isn't the right-most thing in the bar).
+                  // Reverts to the original absolute/right-0/w-80 anchor
+                  // at sm+ where there's room either way.
+                  <div className="fixed left-4 right-4 top-16 mt-2 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:w-80 bg-sr-surface border border-sr-border rounded-xl shadow-2xl overflow-hidden z-50">
                     <div className="p-3 border-b border-sr-border flex items-center justify-between">
                       <span className="text-sm font-semibold text-white">Notifications</span>
                       {unreadCount > 0 ? (
