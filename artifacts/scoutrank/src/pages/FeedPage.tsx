@@ -1719,7 +1719,15 @@ export function FeedPostCard({
               // the moment it starts playing — without it, autoplay-on
               // -scroll would yank the viewer into a full-screen player
               // instead of playing quietly inline like Instagram's feed.
-              <video ref={feedVideoRef} src={post.media_url} playsInline loop className="max-h-[480px] w-auto max-w-full" />
+              // #t=0.1 + preload="auto": a post that's already on-screen
+              // the moment the page loads (no scroll needed to trigger the
+              // observer) was showing solid black until tapped — same
+              // blank-video issue fixed on the profile media grids, here
+              // compounded by the browser not having buffered anything yet.
+              // The time-fragment forces a real frame to render immediately
+              // and preload="auto" gets playable data in sooner so autoplay
+              // has something to show right away instead of a black box.
+              <video ref={feedVideoRef} src={`${post.media_url}#t=0.1`} playsInline loop preload="auto" className="max-h-[480px] w-auto max-w-full" />
             )}
             {kind === 'audio' && (
               <div className="p-4 w-full">
