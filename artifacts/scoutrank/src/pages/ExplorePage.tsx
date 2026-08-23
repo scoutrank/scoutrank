@@ -38,6 +38,21 @@ export default function ExplorePage() {
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
+  // Same blocked-users set the Feed page filters by — Explore was pulling
+  // straight from `posts` with no such filter at all, so a profile you'd
+  // blocked (or that had blocked you) still showed up here even though
+  // their posts correctly disappeared from the Feed.
+  const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!profile) return;
+    supabase.rpc('get_blocked_counterpart_ids').then(({ data, error }) => {
+      if (error) return; // SQL #90 not yet applied — silently skip
+      const ids = new Set<string>();
+      for (const r of (data ?? []) as { profile_id: string }[]) ids.add(r.profile_id);
+      setBlockedIds(ids);
+    });
+  }, [profile?.id]);
+
   const loadPosts = useCallback(async (currentOffset: number, append: boolean) => {
     if (currentOffset === 0) setLoading(true);
     else setLoadingMore(true);
@@ -53,7 +68,12 @@ export default function ExplorePage() {
         .range(currentOffset, currentOffset + PAGE_SIZE - 1);
 
       if (error) { console.error('[ExplorePage] load failed:', error.message); return; }
-      const raw = (data ?? []) as ExplorePost[];
+      // `hasMore`/`offset` are paced off the actual fetched row count, not
+      // the post-filter count below — otherwise a page that happens to
+      // contain a blocked profile's posts would look like a short/last page
+      // and end infinite-scroll early even though more posts exist past it.
+      const fetched = (data ?? []) as ExplorePost[];
+      const raw = fetched.filter(p => !blockedIds.has(p.profile_id));
       const ids = raw.map(p => p.id);
 
       const queries = [
@@ -97,17 +117,21 @@ export default function ExplorePage() {
       setReactedByMe(prev => append ? { ...prev, ...myReacted } : myReacted);
       setSavedByMe(prev => append ? { ...prev, ...mySaved } : mySaved);
       setCommentCounts(prev => append ? { ...prev, ...cCounts } : cCounts);
-      setHasMore(raw.length === PAGE_SIZE);
-      setOffset(currentOffset + raw.length);
+      setHasMore(fetched.length === PAGE_SIZE);
+      setOffset(currentOffset + fetched.length);
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [profile?.id]);
+  }, [profile?.id, blockedIds]);
 
   // Re-load whenever the profile becomes available so the reacted/saved-by-me
   // state actually resolves against the right user (mirrors Feed page).
-  useEffect(() => { loadPosts(0, false); }, [profile?.id]);
+  // Also re-loads once `blockedIds` itself resolves — that RPC is a separate
+  // round-trip from the posts query and can land after the first page is
+  // already on screen, so without this a blocked profile's posts could
+  // still flash into view on first load until this refetches.
+  useEffect(() => { loadPosts(0, false); }, [profile?.id, blockedIds]);
 
   // Live updates — a new post from anyone shows up here without needing a
   // reload, and a post someone (or an admin) deletes disappears
@@ -116,11 +140,12 @@ export default function ExplorePage() {
     const channel = supabase
       .channel('explore-posts-live')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, async payload => {
-        const newPost = payload.new as { id: string; media_url: string | null; media_type: string | null; post_type: string };
+        const newPost = payload.new as { id: string; profile_id: string; media_url: string | null; media_type: string | null; post_type: string };
         // Only ever show posts that actually match Explore's own filter —
         // a text-only post or one still missing media shouldn't appear.
         if (!newPost.media_url || !['photo', 'video'].includes(newPost.media_type ?? '')) return;
         if (!['post', 'highlight'].includes(newPost.post_type)) return;
+        if (blockedIds.has(newPost.profile_id)) return;
 
         const { data } = await supabase.from('posts').select('*, profiles(*)').eq('id', newPost.id).maybeSingle();
         if (!data) return;
@@ -133,7 +158,7 @@ export default function ExplorePage() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [blockedIds]);
 
   useEffect(() => {
     if (!containerRef.current) return;

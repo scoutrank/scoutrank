@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
 import { supabase, fullName } from '@/lib/supabase';
 import type { Post, Profile } from '@/lib/supabase';
 import { timeAgo } from '@/utils/time';
@@ -9,6 +8,7 @@ import { LinkIcon, MuscleIcon } from '@/components/icons';
 import { MuscleReactionButton } from '@/components/MuscleReactionButton';
 import { CommentSheet } from '@/components/CommentSheet';
 import { ShareToFriendModal } from '@/components/ShareToFriendModal';
+import { SafeProfileLink } from '@/components/ui/SafeProfileLink';
 
 export type ExplorePost = Post & { profiles: Profile; reactionCount: number; commentCount: number };
 
@@ -316,7 +316,16 @@ export function ExploreCard({
 
         {/* Bottom-left creator info + caption */}
         <div className="absolute bottom-0 left-0 right-14 p-4" onClick={e => e.stopPropagation()}>
-          <Link to={`/profile/${post.profiles.username}`} className="flex items-center gap-2 mb-2 w-fit">
+          {/* Was a bare <Link> — every equivalent spot on the Feed page uses
+              SafeProfileLink, which withholds navigation when the viewer may
+              be a minor and the target is an unverified coach/scout. This is
+              the same tap, so it needs the same gate. */}
+          <SafeProfileLink
+            targetProfile={post.profiles}
+            viewerProfile={currentProfile}
+            viewerUserId={currentProfileId}
+            className="flex items-center gap-2 mb-2 w-fit"
+          >
             <div className="h-7 w-7 rounded-full overflow-hidden bg-gradient-to-br from-sr-purple to-sr-blue flex-shrink-0">
               {post.profiles.avatar_url ? (
                 <img src={post.profiles.avatar_url} alt="" className="h-full w-full object-cover" />
@@ -328,7 +337,7 @@ export function ExploreCard({
             </div>
             <span className="text-sm font-bold text-white drop-shadow">{fullName(post.profiles)}</span>
             <span className="text-xs text-white/60">@{post.profiles.username}</span>
-          </Link>
+          </SafeProfileLink>
           {post.post_type === 'achievement' && post.achievement_title && (
             <p className="text-white font-semibold text-sm mb-1 drop-shadow">{post.achievement_title}</p>
           )}
