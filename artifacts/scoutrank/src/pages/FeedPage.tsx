@@ -21,7 +21,7 @@ import {
   Send, Camera, Video, Mic,
   X, Play, Upload, MessageCircle, Users, Search, Plus,
   Loader2, StopCircle, Trash2, MoreVertical, ArrowLeft, Trophy,
-  Volume2, VolumeX,
+  Volume2, VolumeX, Flag, Check,
 } from 'lucide-react';
 import { CommentIcon, BookmarkIcon, ShareIcon, LinkIcon, ReactionIcon, ReactionIconById, MuscleIcon } from '@/components/icons';
 import { MuscleReactionButton } from '@/components/MuscleReactionButton';
@@ -1274,6 +1274,16 @@ export function FeedPostCard({
   const [videoPaused, setVideoPaused] = useState(false);
   const [videoMuted, setVideoMuted] = useState(true);
 
+  // Report post — the `reports` table already has a reported_post_id column
+  // and AdminReportsPage already knows how to review these, but nothing in
+  // the Feed itself ever gave a viewer a way to actually flag a post.
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportCategory, setReportCategory] = useState('');
+  const [reportReason, setReportReason] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [reportError, setReportError] = useState('');
+
   const loadComments = () => {
     setIsLoadingComments(true);
     supabase
@@ -1650,6 +1660,32 @@ export function FeedPostCard({
     onPostDeleted(post.id);
   };
 
+  const submitReportPost = async () => {
+    if (!reportCategory || !currentProfileId) return;
+    setReportSubmitting(true);
+    setReportError('');
+    const { error } = await supabase.from('reports').insert({
+      reporter_id: currentProfileId,
+      reported_post_id: post.id,
+      reported_profile_id: post.profile_id,
+      category: reportCategory,
+      reason: reportReason.trim() || reportCategory,
+    });
+    setReportSubmitting(false);
+    if (error) {
+      setReportError(error.message.includes('Rate limit') ? error.message.replace(/^.*Rate limit exceeded: /, '') : 'Could not submit report. Please try again.');
+      return;
+    }
+    setReportSubmitted(true);
+    setTimeout(() => {
+      setShowReportModal(false);
+      setReportSubmitted(false);
+      setReportCategory('');
+      setReportReason('');
+      setReportError('');
+    }, 2000);
+  };
+
   const authorAvatarInitials = `${post.profiles?.first_name?.[0] ?? ''}${post.profiles?.last_name?.[0] ?? ''}`;
 
   return (
@@ -1694,13 +1730,65 @@ export function FeedPostCard({
             )}
           </div>
         </div>
-        {isPostOwner && (
+        {isPostOwner ? (
           <button onClick={handleDeletePost} disabled={isDeletingPost}
             className="text-sr-text-muted hover:text-red-400 flex-shrink-0 p-1" title="Delete post">
             <Trash2 className="h-4 w-4" />
           </button>
+        ) : viewerProfile?.role !== 'parent' && (
+          <button onClick={() => setShowReportModal(true)}
+            className="text-sr-text-muted hover:text-red-400 flex-shrink-0 p-1" title="Report post">
+            <Flag className="h-4 w-4" />
+          </button>
         )}
       </div>
+
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowReportModal(false)}>
+          <div className="bg-sr-surface border border-sr-border rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Flag className="h-5 w-5 text-red-400" /> Report Post
+            </h3>
+            {reportSubmitted ? (
+              <div className="text-center py-6">
+                <Check className="h-10 w-10 text-green-400 mx-auto mb-3" />
+                <p className="text-sm text-sr-silver">Report submitted. Our team will review it shortly.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-sr-text-muted mb-4">Why are you reporting this post?</p>
+                <div className="space-y-2 mb-4">
+                  {[
+                    ['misleading_information', 'Misleading information'],
+                    ['inappropriate_content', 'Inappropriate content'],
+                    ['harassment', 'Harassment or bullying'],
+                    ['underage_safety', 'Safety concern about a minor'],
+                    ['spam', 'Spam'],
+                    ['other', 'Other'],
+                  ].map(([value, label]) => (
+                    <button key={value} onClick={() => setReportCategory(value)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm border transition-all ${
+                        reportCategory === value ? 'border-sr-purple bg-sr-purple/10 text-white' : 'border-sr-border text-sr-text-muted hover:border-sr-purple/30'
+                      }`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <label className="block text-xs text-sr-text-muted mb-1">Additional details (optional)</label>
+                <textarea value={reportReason} onChange={e => setReportReason(e.target.value)} rows={2}
+                  className="input-dark w-full resize-none text-sm mb-3" placeholder="Anything else that would help us review this?" />
+                {reportError && <p className="text-xs text-red-400 mb-3">{reportError}</p>}
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => { setShowReportModal(false); setReportError(''); }}>Cancel</Button>
+                  <Button variant="danger" size="sm" disabled={!reportCategory || reportSubmitting} onClick={submitReportPost}>
+                    {reportSubmitting ? 'Submitting...' : 'Submit Report'}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {post.post_type === 'achievement' && (
         <div className="mb-2 flex items-center gap-2">
