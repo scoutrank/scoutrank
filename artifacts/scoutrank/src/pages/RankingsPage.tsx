@@ -208,7 +208,39 @@ export default function RankingsPage() {
       });
   }, [profile?.id, ageGroup, sport]);
 
-  const filteredAthletes = rankings.filter(r => {
+  // Region filter — `category` was previously pure UI: the dropdown set it,
+  // but nothing downstream ever read it, so Local/Regional/State/National
+  // all silently behaved exactly like Global regardless of selection. There's
+  // no dedicated "region" boundary in the schema — the only geographic data
+  // on a profile is city/state/country — so this compares each athlete
+  // against the CURRENT VIEWER's own location for that tier. "Regional" and
+  // "State" resolve to the same comparison (same state) since there's no
+  // narrower regional grouping to compare against; a real one would need its
+  // own data source. Falls back to unfiltered when the viewer hasn't set the
+  // relevant location field themselves, rather than showing an empty list.
+  const geoUnavailable = category !== 'global' && profile != null && (
+    (category === 'local' && !profile.city) ||
+    ((category === 'regional' || category === 'state') && !profile.state) ||
+    (category === 'national' && !profile.country)
+  );
+  const geoFilteredRankings = useMemo(() => {
+    if (category === 'global' || !profile) return rankings;
+    if (category === 'local') {
+      if (!profile.city) return rankings;
+      return rankings.filter(r => r.profiles.city?.toLowerCase() === profile.city!.toLowerCase());
+    }
+    if (category === 'regional' || category === 'state') {
+      if (!profile.state) return rankings;
+      return rankings.filter(r => r.profiles.state?.toLowerCase() === profile.state!.toLowerCase());
+    }
+    if (category === 'national') {
+      if (!profile.country) return rankings;
+      return rankings.filter(r => r.profiles.country?.toLowerCase() === profile.country!.toLowerCase());
+    }
+    return rankings;
+  }, [rankings, category, profile?.city, profile?.state, profile?.country]);
+
+  const filteredAthletes = geoFilteredRankings.filter(r => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return fullName(r.profiles).toLowerCase().includes(q) || r.profiles.username.toLowerCase().includes(q);
@@ -308,6 +340,12 @@ export default function RankingsPage() {
             { value: 'national', label: 'National' },
             { value: 'global', label: 'Global' },
           ]} />
+          {geoUnavailable && (
+            <span className="text-xs text-sr-text-muted">
+              Set your {category === 'national' ? 'country' : category === 'local' ? 'city' : 'state'} in{' '}
+              <Link to="/settings" className="text-sr-purple-light hover:text-white">Settings</Link> to use this filter
+            </span>
+          )}
           <div className="flex-1" />
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sr-text-muted" />
@@ -356,6 +394,8 @@ export default function RankingsPage() {
           <p className="text-sm text-sr-text-muted">
             {rankings.length === 0
               ? 'Rankings will appear here once athletes are scored.'
+              : category !== 'global' && geoFilteredRankings.length === 0
+              ? `No athletes found for your ${category} filter — try Global instead.`
               : 'Try adjusting your search.'}
           </p>
         </div>
@@ -581,10 +621,16 @@ function StatLeaderboard() {
     const thisId = ++requestIdRef.current;
     let active = true;
 
+    // Only verified stats belong on a public leaderboard — the Stats tab
+    // itself tells athletes a pending submission "will not affect ScoutRank
+    // until approved", but this query had no status filter at all, so a
+    // still-pending or even an explicitly rejected result could still rank
+    // #1 with a gold medal here, ahead of genuinely verified results.
     let query = supabase
       .from('athlete_stats')
       .select('*, profiles(*)')
-      .eq('stat_event_type_id', eventTypeId);
+      .eq('stat_event_type_id', eventTypeId)
+      .eq('verification_status', 'verified');
 
     const eligibleGroups = eligibleGroupsFor(ageGroup);
     if (eligibleGroups !== null) query = query.in('age_group', eligibleGroups);
