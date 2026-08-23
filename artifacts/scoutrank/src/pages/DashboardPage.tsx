@@ -48,6 +48,14 @@ export default function DashboardPage() {
   const [achievementCount, setAchievementCount] = useState(0);
   const [loadingStats, setLoadingStats] = useState(true);
   const [liveRefreshTick, setLiveRefreshTick] = useState(0);
+  // Current rank_score per sport, straight from `rankings` (source of truth).
+  // The "Latest ScoutRank Movement" card below is driven by `rank_history`,
+  // which is a log of past events — if a stat gets unverified and then a new
+  // one gets verified shortly after, the most recent history row can still
+  // read as "became unranked" even though the athlete is ranked again right
+  // now. This map lets that card check itself against current reality before
+  // showing "Became unranked".
+  const [sportRankMap, setSportRankMap] = useState<Record<string, number> | null>(null);
 
   // ── Club invites — a club invited this account to join, either as a
   // coach/scout (role_context 'coach_scout') or as a player ('athlete').
@@ -102,6 +110,8 @@ export default function DashboardPage() {
       supabase.from('rankings').select('rank_score, sport')
         .eq('profile_id', profile.id).eq('division', 'Open')
         .order('rank_score', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('rankings').select('sport, rank_score')
+        .eq('profile_id', profile.id).eq('division', 'Open'),
       supabase.from('rank_history')
         .select('rank_score,previous_rank_score,leaderboard_position,previous_position,sport,trigger_reason,recorded_at')
         .eq('profile_id', profile.id).eq('division', 'Open')
@@ -111,7 +121,7 @@ export default function DashboardPage() {
       supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', profile.id),
       supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', profile.id),
       supabase.from('posts').select('*', { count: 'exact', head: true }).eq('profile_id', profile.id).eq('post_type', 'achievement'),
-    ]).then(([rankingRes, movementRes, followersRes, followingRes, achievementsRes]) => {
+    ]).then(([rankingRes, sportRankingsRes, movementRes, followersRes, followingRes, achievementsRes]) => {
       if (!active) return;
       const bestRanking = rankingRes.data as { rank_score: number; sport?: string } | null;
       setMyScore(bestRanking?.rank_score ?? null);
@@ -123,6 +133,8 @@ export default function DashboardPage() {
             setScorePoolCount(Math.max(distinct, 1));
           });
       }
+      const sportRankRows = (sportRankingsRes.data as { sport: string; rank_score: number }[] | null) ?? [];
+      setSportRankMap(Object.fromEntries(sportRankRows.map(r => [r.sport, Number(r.rank_score)])));
       setLatestMovement((movementRes.data as typeof latestMovement) ?? null);
       setFollowerCount(followersRes.count ?? 0);
       setFollowingCount(followingRes.count ?? 0);
@@ -482,10 +494,18 @@ export default function DashboardPage() {
                 </div>
               ) : (() => {
                 const h = latestMovement;
-                const newlyRanked    = h.previous_rank_score == null && h.rank_score != null;
-                const becameUnranked = h.previous_rank_score != null && h.rank_score == null;
-                const scoreDelta = h.rank_score != null && h.previous_rank_score != null
-                  ? Math.round((Number(h.rank_score) - Number(h.previous_rank_score)) * 100) / 100
+                // `h` is a snapshot of the most recent rank_history event, which can
+                // lag behind reality — e.g. a stat gets unverified (recording an
+                // "unranked" event) and then a new stat gets verified shortly after,
+                // putting the athlete back in the rankings. If `rankings` currently
+                // shows an active score for this sport, trust that over the stale
+                // history row rather than telling the athlete they're unranked.
+                const liveScoreForSport = sportRankMap?.[h.sport] ?? null;
+                const effectiveRankScore = h.rank_score ?? liveScoreForSport;
+                const newlyRanked    = h.previous_rank_score == null && effectiveRankScore != null;
+                const becameUnranked = h.previous_rank_score != null && effectiveRankScore == null;
+                const scoreDelta = effectiveRankScore != null && h.previous_rank_score != null
+                  ? Math.round((Number(effectiveRankScore) - Number(h.previous_rank_score)) * 100) / 100
                   : null;
 
                 const posDelta = h.leaderboard_position != null && h.previous_position != null
@@ -526,10 +546,10 @@ export default function DashboardPage() {
                         )}
                       </p>
                     </div>
-                    {!newlyRanked && !becameUnranked && h.rank_score != null && (
+                    {!newlyRanked && !becameUnranked && effectiveRankScore != null && (
                       <div className="text-right">
                         <p className="text-xs text-sr-text-muted">Score</p>
-                        <p className="text-sm font-bold text-white">{displayScoutRank(h.rank_score)}</p>
+                        <p className="text-sm font-bold text-white">{displayScoutRank(effectiveRankScore)}</p>
                       </div>
                     )}
                   </div>
