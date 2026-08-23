@@ -146,18 +146,24 @@ export default function DashboardPage() {
   }, [profile?.id, liveRefreshTick]);
 
   // Live — a punitive score reset or a newly-verified stat updates your
-  // own score/rank on the dashboard immediately, no refresh needed.
+  // own score/rank on the dashboard immediately, no refresh needed. Also
+  // listens for this profile's own posts (achievements included — an
+  // achievement is stored as a post with post_type='achievement') so the
+  // Achievements stat and profile completeness update the moment one is
+  // added, not just on next page load.
   // Scoped to just this profile's rows, not the whole table, since this
   // is a personal dashboard, not a shared leaderboard view.
   useEffect(() => {
     if (!profile?.id) return;
     let debounceTimer: number | null = null;
+    const bump = () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => setLiveRefreshTick(t => t + 1), 500);
+    };
     const channel = supabase
       .channel(`rankings-live-dashboard-${profile.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rankings', filter: `profile_id=eq.${profile.id}` }, () => {
-        if (debounceTimer) window.clearTimeout(debounceTimer);
-        debounceTimer = window.setTimeout(() => setLiveRefreshTick(t => t + 1), 500);
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rankings', filter: `profile_id=eq.${profile.id}` }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts', filter: `profile_id=eq.${profile.id}` }, bump)
       .subscribe();
     return () => {
       if (debounceTimer) window.clearTimeout(debounceTimer);
@@ -168,7 +174,7 @@ export default function DashboardPage() {
   // Top athletes leaderboard preview — two separate queries merged client-side.
   // Must filter to division='Open' after SQL #93 so each athlete appears once
   // (rankings now has one row per profile_id+sport+division).
-  useEffect(() => {
+  function loadTopAthletes() {
     supabase
       .from('rankings')
       .select('profile_id, sport, rank_score, division')
@@ -214,6 +220,31 @@ export default function DashboardPage() {
         setTopAthletes(athletes);
         setLoadingAthletes(false);
       });
+  }
+
+  useEffect(() => {
+    loadTopAthletes();
+  }, []);
+
+  // Live — refresh the Top 5 Leaderboard whenever ANY athlete's ranking
+  // changes, not just this profile's. A stat getting verified for someone
+  // else can bump them into (or out of) the top 5, and previously this list
+  // only ever loaded once on mount. Unfiltered/table-wide, so debounced a
+  // bit more generously than the personal channel above to avoid refetching
+  // on every single row change when rankings are being recalculated in bulk.
+  useEffect(() => {
+    let debounceTimer: number | null = null;
+    const channel = supabase
+      .channel('rankings-live-leaderboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rankings' }, () => {
+        if (debounceTimer) window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(loadTopAthletes, 1500);
+      })
+      .subscribe();
+    return () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Latest community posts (real, from Supabase)
@@ -280,13 +311,16 @@ export default function DashboardPage() {
   const showScoreRing = !isAdmin && profile.role !== 'coach' && profile.role !== 'scout';
 
   const suggestedActions = [
-    { icon: Upload, label: 'Upload a Highlight', desc: 'Add game footage or clips', to: `/profile/${profile.username}?tab=highlights`, show: isAthlete },
-    { icon: Award, label: 'Add Achievement', desc: 'Submit your first achievement', to: `/profile/${profile.username}?tab=achievements`, show: isAthlete },
-    { icon: FileText, label: 'Complete Bio', desc: 'Tell your sporting story', to: '/settings', show: !isParent },
-    { icon: Search, label: 'Browse Athletes', desc: 'Discover other athletes', to: '/discover', show: true },
-    { icon: Sparkles, label: 'Generate AI Resume', desc: 'Create your athlete CV', to: `/profile/${profile.username}?tab=resume`, show: isAthlete },
-    { icon: Shield, label: 'Verification Centre', desc: 'Get verified as a coach or scout', to: '/verification-status', show: profile.role === 'coach' || profile.role === 'scout' },
-    { icon: Users, label: 'My Athletes', desc: 'View your linked athletes', to: '/parent', show: isParent },
+    { icon: Upload, label: 'Upload a Highlight', desc: 'Add game footage or clips', to: `/profile/${profile.username}?tab=highlights`, show: isAthlete, comingSoon: false },
+    { icon: Award, label: 'Add Achievement', desc: 'Submit your first achievement', to: `/profile/${profile.username}?tab=achievements`, show: isAthlete, comingSoon: false },
+    { icon: FileText, label: 'Complete Bio', desc: 'Tell your sporting story', to: '/settings', show: !isParent, comingSoon: false },
+    { icon: Search, label: 'Browse Athletes', desc: 'Discover other athletes', to: '/discover', show: true, comingSoon: false },
+    // No "resume" tab exists on the profile page yet — this used to link
+    // there anyway and land on a blank tab panel. Marked Coming Soon instead
+    // of hiding it outright, since the feature is still on the roadmap.
+    { icon: Sparkles, label: 'Generate AI Resume', desc: 'Create your athlete CV', to: `/profile/${profile.username}?tab=resume`, show: isAthlete, comingSoon: true },
+    { icon: Shield, label: 'Verification Centre', desc: 'Get verified as a coach or scout', to: '/verification-status', show: profile.role === 'coach' || profile.role === 'scout', comingSoon: false },
+    { icon: Users, label: 'My Athletes', desc: 'View your linked athletes', to: '/parent', show: isParent, comingSoon: false },
   ].filter(a => a.show);
 
   const handleQuickPost = async () => {
@@ -347,10 +381,18 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-col items-end gap-2">
           {showScoreRing && (
-            <div className="flex-col items-end gap-1 hidden sm:flex">
-              <div className="text-xs text-sr-purple-light uppercase tracking-widest font-semibold">ScoutRank</div>
-              <ScoreRing score={myScore} size={88} />
-            </div>
+            <>
+              <div className="flex-col items-end gap-1 hidden sm:flex">
+                <div className="text-xs text-sr-purple-light uppercase tracking-widest font-semibold">ScoutRank</div>
+                <ScoreRing score={myScore} size={88} />
+              </div>
+              {/* Was completely absent below the sm breakpoint — a phone visitor
+                  had no way to see their own score ring on the dashboard at all.
+                  Smaller size to fit next to the avatar/name row on narrow screens. */}
+              <div className="sm:hidden">
+                <ScoreRing score={myScore} size={52} />
+              </div>
+            </>
           )}
           {isAdmin && (
             <Button variant="brand" size="sm" icon={<Shield className="h-4 w-4" />} onClick={() => navigate('/admin')}>
@@ -461,7 +503,14 @@ export default function DashboardPage() {
               />
               <div className="flex justify-between items-center w-full mt-2 border-t border-sr-border/50 pt-2">
                 <div className="flex gap-2">
-                  <button className="p-2 text-sr-text-muted hover:text-sr-purple-light transition-colors rounded-full hover:bg-sr-purple/10"><Upload className="h-4 w-4" /></button>
+                  {/* Quick Post here is text-only (no media_url support), so this
+                      icon used to do nothing when tapped. It now sends you to the
+                      Feed's full composer, which actually supports attachments. */}
+                  <button type="button" title="Attach a photo or video"
+                    onClick={() => navigate('/feed?compose=1')}
+                    className="p-2 text-sr-text-muted hover:text-sr-purple-light transition-colors rounded-full hover:bg-sr-purple/10">
+                    <Upload className="h-4 w-4" />
+                  </button>
                 </div>
                 <div className="flex items-center gap-3">
                   {postError && (
@@ -608,8 +657,17 @@ export default function DashboardPage() {
             </h3>
             <div className="grid sm:grid-cols-2 gap-3">
               {suggestedActions.map(action => (
-                <button key={action.label} onClick={() => navigate(action.to)}
-                  className="card-premium p-4 text-left hover:border-sr-purple/30 transition-all group">
+                <button key={action.label}
+                  disabled={action.comingSoon}
+                  onClick={() => { if (!action.comingSoon) navigate(action.to); }}
+                  className={`card-premium p-4 text-left transition-all group relative ${
+                    action.comingSoon ? 'opacity-60 cursor-not-allowed' : 'hover:border-sr-purple/30'
+                  }`}>
+                  {action.comingSoon && (
+                    <span className="absolute top-3 right-3 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-sr-surface border border-sr-border text-sr-text-muted">
+                      Coming Soon
+                    </span>
+                  )}
                   <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sr-purple/20 to-sr-blue/20 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <action.icon className="h-5 w-5 text-sr-purple-light" />
                   </div>
@@ -621,7 +679,11 @@ export default function DashboardPage() {
           </div>
 
           {/* Scout Bot Banner */}
-          <a href="/scout-bot/"
+          {/* Was a plain <a href>, which forces a full page reload instead of
+              a client-side route change — every other nav link on this page
+              uses <Link>/navigate(), so this one was silently slower than
+              the rest of the app. */}
+          <Link to="/scout-bot"
             className="block card-premium p-5 border-sr-purple/25 hover:border-sr-purple/50 transition-all group relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-sr-purple/8 to-sr-blue/8 opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="relative flex items-center gap-4">
@@ -637,38 +699,7 @@ export default function DashboardPage() {
               </div>
               <span className="text-sr-purple-light text-sm font-semibold group-hover:translate-x-1 transition-transform flex-shrink-0">Chat →</span>
             </div>
-          </a>
-
-          {/* Quick Post — hidden for parents */}
-          {!isParent && (
-          <div className="card-premium p-4">
-            <h3 className="text-sm font-semibold text-white mb-3">Quick Post</h3>
-            {postError && (
-              <div className="mb-3 p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-                {postError}
-              </div>
-            )}
-            {postSuccess && (
-              <div className="mb-3 p-2 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-xs">
-                Post shared to the Feed!
-              </div>
-            )}
-            <textarea
-              className="input-dark h-20 resize-none text-sm"
-              placeholder="Share an update, game result, or milestone..."
-              value={quickPostContent}
-              onChange={e => setQuickPostContent(e.target.value)}
-            />
-            <div className="flex justify-end mt-2">
-              <Button variant="brand" size="sm"
-                icon={posting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                disabled={!quickPostContent.trim() || posting}
-                onClick={handleQuickPost}>
-                {posting ? 'Posting...' : 'Post'}
-              </Button>
-            </div>
-          </div>
-          )}
+          </Link>
         </div>
 
         {/* Sidebar */}

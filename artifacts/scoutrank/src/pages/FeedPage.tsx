@@ -787,6 +787,19 @@ export default function FeedPage() {
       });
   }, [searchParams, profile?.id]);
 
+  // Deep link to open the post composer directly: /feed?compose=1
+  // Lets other pages (e.g. the Dashboard's Quick Post attach button) send
+  // someone straight into the full composer, which is where photo/video/audio
+  // attachments actually live — Quick Post itself is text-only.
+  const composeHandledRef = useRef(false);
+  useEffect(() => {
+    if (!searchParams.get('compose') || composeHandledRef.current) return;
+    composeHandledRef.current = true;
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('compose'); return next; }, { replace: true });
+    setViewMode('feed');
+    setShowComposer(true);
+  }, [searchParams]);
+
   if (!profile) return null;
   const isParent = profile.role === 'parent';
 
