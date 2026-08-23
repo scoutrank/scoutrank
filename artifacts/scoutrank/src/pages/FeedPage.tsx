@@ -21,6 +21,7 @@ import {
   Send, Camera, Video, Mic,
   X, Play, Upload, MessageCircle, Users, Search, Plus,
   Loader2, StopCircle, Trash2, MoreVertical, ArrowLeft, Trophy,
+  Volume2, VolumeX,
 } from 'lucide-react';
 import { CommentIcon, BookmarkIcon, ShareIcon, LinkIcon, ReactionIcon, ReactionIconById, MuscleIcon } from '@/components/icons';
 import { MuscleReactionButton } from '@/components/MuscleReactionButton';
@@ -1252,10 +1253,13 @@ export function FeedPostCard({
   const [reactionPending, setReactionPending] = useState(false);
   const feedVideoRef = useRef<HTMLVideoElement>(null);
   const mediaKind = resolveMediaKind(post.media_url, post.media_type);
-  // True once the viewer has explicitly paused this video via the native
-  // controls — scrolling it back into view then leaves it paused instead
-  // of forcing it to resume, same courtesy Explore/Reels gives.
+  // True once the viewer has explicitly paused this video (tapping it) —
+  // scrolling it back into view then leaves it paused instead of forcing
+  // it to resume, same courtesy Explore/Reels gives. Mirrored into state
+  // (below) purely so the paused-icon overlay can re-render on change.
   const userPausedVideoRef = useRef(false);
+  const [videoPaused, setVideoPaused] = useState(false);
+  const [videoMuted, setVideoMuted] = useState(true);
 
   const loadComments = () => {
     setIsLoadingComments(true);
@@ -1345,11 +1349,13 @@ export function FeedPostCard({
       const el = video as HTMLVideoElement & { __autoplayControlled?: boolean };
       if (el.__autoplayControlled) el.__autoplayControlled = false;
       else userPausedVideoRef.current = true;
+      setVideoPaused(true);
     };
     const onPlay = () => {
       const el = video as HTMLVideoElement & { __autoplayControlled?: boolean };
       if (el.__autoplayControlled) el.__autoplayControlled = false;
       else userPausedVideoRef.current = false;
+      setVideoPaused(false);
     };
     video.addEventListener('pause', onPause);
     video.addEventListener('play', onPlay);
@@ -1414,6 +1420,38 @@ export function FeedPostCard({
             });
         });
     }
+  };
+
+  // Single tap toggles play/pause (video only) instead of relying on the
+  // native <video controls> bar — which is gone now (see the video element
+  // below) since it was intercepting taps with its own skip ±10s/expand-to
+  // -fullscreen/scrub buttons instead of letting a tap reach this handler
+  // at all. A second tap within 300ms cancels the pending single-tap and
+  // reacts instead, same split Explore/Reels uses for its cards.
+  const lastTapRef = useRef(0);
+  const singleTapTimeoutRef = useRef<number | null>(null);
+  const handleTapMedia = (e: React.MouseEvent<HTMLDivElement>) => {
+    const now = Date.now();
+    const sinceLastTap = now - lastTapRef.current;
+    lastTapRef.current = now;
+
+    if (sinceLastTap < 300) {
+      if (singleTapTimeoutRef.current) {
+        window.clearTimeout(singleTapTimeoutRef.current);
+        singleTapTimeoutRef.current = null;
+      }
+      handleDoubleTapLike(e);
+      return;
+    }
+
+    singleTapTimeoutRef.current = window.setTimeout(() => {
+      singleTapTimeoutRef.current = null;
+      if (mediaKind !== 'video') return;
+      const video = feedVideoRef.current;
+      if (!video) return;
+      if (video.paused) video.play().catch(() => {});
+      else video.pause();
+    }, 300);
   };
 
   // Real boost (💪) — "safe" toggle: ask the database what's actually
@@ -1668,23 +1706,51 @@ export function FeedPostCard({
       {post.media_url && (() => {
         const kind = resolveMediaKind(post.media_url, post.media_type);
         return (
-          <div className="relative mb-3 rounded-xl overflow-hidden bg-black border border-sr-border flex justify-center"
-            onDoubleClick={e => { if (kind !== 'audio') handleDoubleTapLike(e); }}>
+          <div className={`relative mb-3 rounded-xl overflow-hidden bg-black border border-sr-border flex justify-center ${kind !== 'audio' ? 'cursor-pointer' : ''}`}
+            onClick={e => { if (kind !== 'audio') handleTapMedia(e); }}>
             {kind === 'photo' && (
               <img src={post.media_url} alt="" className="max-h-[480px] w-auto max-w-full object-contain" />
             )}
             {kind === 'video' && (
-              // playsInline is what stops iOS Safari from forcing this into
-              // full-screen the moment it starts playing — without it,
-              // autoplay-on-scroll would yank the viewer into a full-screen
-              // player instead of playing quietly inline like Instagram's
-              // main feed does.
-              <video ref={feedVideoRef} src={post.media_url} controls playsInline loop className="max-h-[480px] w-auto max-w-full" />
+              // No native `controls` — its skip ±10s/expand-to-fullscreen/
+              // scrub buttons were intercepting taps meant for our own tap
+              // -to-pause and double-tap-to-react gestures. playsInline is
+              // what stops iOS Safari from forcing this into full-screen
+              // the moment it starts playing — without it, autoplay-on
+              // -scroll would yank the viewer into a full-screen player
+              // instead of playing quietly inline like Instagram's feed.
+              <video ref={feedVideoRef} src={post.media_url} playsInline loop className="max-h-[480px] w-auto max-w-full" />
             )}
             {kind === 'audio' && (
               <div className="p-4 w-full">
                 <audio src={post.media_url} controls className="w-full" />
               </div>
+            )}
+            {/* Centered play icon when manually paused — the only playback
+                affordance now that native controls are gone. */}
+            {kind === 'video' && videoPaused && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="h-16 w-16 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
+                  <Play className="h-7 w-7 text-white fill-white ml-1" />
+                </div>
+              </div>
+            )}
+            {/* Mute toggle — small, bottom-right corner, Reels-style —
+                replaces the native controls' volume icon. */}
+            {kind === 'video' && (
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  const video = feedVideoRef.current;
+                  if (!video) return;
+                  video.muted = !video.muted;
+                  setVideoMuted(video.muted);
+                }}
+                className="absolute bottom-3 right-3 h-8 w-8 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white z-10"
+                title={videoMuted ? 'Unmute' : 'Mute'}
+              >
+                {videoMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
             )}
             <AnimatePresence>
               {showLikeBurst && (
