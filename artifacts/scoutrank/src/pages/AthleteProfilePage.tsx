@@ -1088,7 +1088,11 @@ function PostsTab({ profileId }: { profileId: string }) {
               {post.media_type === 'photo' ? (
                 <img src={post.media_url!} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
               ) : (
-                <video src={post.media_url!} className="absolute inset-0 w-full h-full object-cover" muted preload="metadata" />
+                // #t=0.1 forces a cover frame to actually render on load —
+                // without a time fragment, iOS Safari leaves the <video>
+                // blank until playback starts (desktop Chrome auto-decodes
+                // a frame so this looked fine there, but not on mobile).
+                <video src={`${post.media_url!}#t=0.1`} className="absolute inset-0 w-full h-full object-cover" muted playsInline preload="metadata" />
               )}
               {post.media_type === 'video' && (
                 <div className="absolute bottom-1.5 left-1.5">
@@ -2688,7 +2692,11 @@ function SavedTab({ profileId }: { profileId: string }) {
             {post.media_type === 'photo' ? (
               <img src={post.media_url ?? ''} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
             ) : isVideo ? (
-              <video src={post.media_url ?? ''} className="absolute inset-0 w-full h-full object-cover" muted preload="metadata" />
+              // #t=0.1 forces a cover frame to actually render on load —
+              // without a time fragment, iOS Safari leaves the <video>
+              // blank until playback starts (desktop Chrome auto-decodes
+              // a frame so this looked fine there, but not on mobile).
+              <video src={`${post.media_url ?? ''}#t=0.1`} className="absolute inset-0 w-full h-full object-cover" muted playsInline preload="metadata" />
             ) : (
               <div className="absolute inset-0 bg-gradient-to-br from-sr-purple to-sr-blue" />
             )}

@@ -2277,7 +2277,9 @@ function SharedPostPreview({ post }: { post: FeedPost }) {
         <img src={post.media_url} alt="" className="w-full max-h-32 object-cover" />
       )}
       {kind === 'video' && post.media_url && (
-        <video src={post.media_url} className="w-full max-h-32 object-cover" muted />
+        // #t=0.1 forces a cover frame to render on load — same iOS Safari
+        // blank-video-thumbnail issue fixed on the profile media grids.
+        <video src={`${post.media_url}#t=0.1`} className="w-full max-h-32 object-cover" muted playsInline preload="metadata" />
       )}
       <div className="p-2 flex items-center gap-2">
         <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-sr-purple to-sr-blue flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
