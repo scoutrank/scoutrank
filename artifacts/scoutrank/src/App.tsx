@@ -216,6 +216,15 @@ function AppRoutes() {
       <Route path="/admin/disputes" element={<AdminRoute><AdminDisputesPage /></AdminRoute>} />
       <Route path="/admin/flagged" element={<AdminRoute><AdminFlaggedContentPage /></AdminRoute>} />
       <Route path="/admin/deletion-requests" element={<AdminRoute><AdminDeletionRequestsPage /></AdminRoute>} />
+      {/* These five used to sit inside the Layout route group below, which
+          meant they carried the full consumer Navbar (Feed/Discover/Combine/
+          etc) above their own admin content — moved out here alongside the
+          rest of the admin routes so they render AdminTopNav instead. */}
+      <Route path="/admin/evidence-reports" element={<AdminRoute><AdminEvidenceReportsPage /></AdminRoute>} />
+      <Route path="/admin/organisation-claims" element={<AdminRoute><AdminOrganisationClaimsPage /></AdminRoute>} />
+      <Route path="/admin/combine-reviews" element={<AdminRoute><AdminMarketplaceListingsPage /></AdminRoute>} />
+      <Route path="/admin/seller-applications" element={<AdminRoute><AdminSellerApplicationsPage /></AdminRoute>} />
+      <Route path="/admin/payouts" element={<AdminRoute><AdminPayoutsPage /></AdminRoute>} />
 
       {/* Deliberately outside ProtectedRoute — that's what redirects here,
           so this route can't itself check account_status or it'd loop. */}
@@ -243,14 +252,9 @@ function AppRoutes() {
         <Route path="/combine/order/:id" element={<OrderConfirmationPage />} />
         <Route path="/combine/become-a-seller" element={<SellerApplicationPage />} />
         <Route path="/combine/:id/edit" element={<EditListingPage />} />
-        <Route path="/admin/evidence-reports" element={<AdminEvidenceReportsPage />} />
         <Route path="/clubs/claim-or-register" element={<ClaimOrRegisterClubPage />} />
-        <Route path="/admin/organisation-claims" element={<AdminOrganisationClaimsPage />} />
         <Route path="/combine/:id" element={<ListingDetailPage />} />
-        <Route path="/admin/combine-reviews" element={<AdminMarketplaceListingsPage />} />
-        <Route path="/admin/seller-applications" element={<AdminSellerApplicationsPage />} />
         <Route path="/combine/earnings" element={<SellerEarningsPage />} />
-        <Route path="/admin/payouts" element={<AdminPayoutsPage />} />
         <Route path="/combine/my-orders" element={<MyOrdersPage />} />
       </Route>
 

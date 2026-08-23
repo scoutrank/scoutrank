@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import { timeAgo } from '@/utils/time';
-import { Trash2, Loader2, AlertCircle, ArrowLeft, UserX } from 'lucide-react';
+import { AdminTopNav } from '@/components/layout/AdminTopNav';
+import { Trash2, Loader2, AlertCircle, UserX } from 'lucide-react';
 
 interface RequestRow {
   id: string;
@@ -78,10 +78,9 @@ export default function AdminDeletionRequestsPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <Link to="/admin" className="inline-flex items-center gap-1.5 text-xs text-sr-text-muted hover:text-white transition-colors mb-4">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Admin
-      </Link>
+    <div className="min-h-screen bg-sr-bg">
+      <AdminTopNav />
+      <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <UserX className="h-7 w-7 text-red-400" />
         <h1 className="text-2xl font-bold text-white">Account Deletion Requests</h1>
@@ -147,6 +146,7 @@ export default function AdminDeletionRequestsPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

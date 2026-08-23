@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { shortDate, timeAgo } from '@/utils/time';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName, displayScoutRank } from '@/lib/supabase';
 import type { Profile, Post } from '@/lib/supabase';
@@ -39,9 +39,25 @@ const adminTabs: { id: AdminTab; label: string; icon: typeof Users; superAdminOn
   { id: 'settings',             label: 'Settings',             icon: Settings },
 ];
 
+const ADMIN_TAB_IDS = new Set(adminTabs.map(t => t.id));
+
 export default function AdminDashboardPage() {
   const { profile, isAdmin, isSuperAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<AdminTab>('analytics');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // AdminTopNav (shown on every other /admin/* page) links to sections that
+  // live here as ?tab= rather than their own route — read it on load so
+  // those links (and any other deep link) land on the right tab.
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTabState] = useState<AdminTab>(
+    tabParam && ADMIN_TAB_IDS.has(tabParam as AdminTab) ? (tabParam as AdminTab) : 'analytics'
+  );
+  // Keeps the URL in sync when switching tabs from the sidebar/mobile bar,
+  // so the current tab can be bookmarked, shared, or linked to from
+  // AdminTopNav on another admin page.
+  const setActiveTab = (tab: AdminTab) => {
+    setActiveTabState(tab);
+    setSearchParams(tab === 'analytics' ? {} : { tab }, { replace: true });
+  };
   const [searchQuery, setSearchQuery] = useState('');
 
   // ── Real data ──────────────────────────────────────────────────

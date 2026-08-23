@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import { timeAgo } from '@/utils/time';
-import { ArrowLeft, Loader2, AlertCircle, ShieldCheck, Check, X } from 'lucide-react';
+import { Loader2, AlertCircle, ShieldCheck, Check, X } from 'lucide-react';
+import { AdminTopNav } from '@/components/layout/AdminTopNav';
 
 interface ApplicationRow {
   id: string;
@@ -60,10 +61,9 @@ export default function AdminSellerApplicationsPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <Link to="/admin" className="inline-flex items-center gap-1.5 text-xs text-sr-text-muted hover:text-white transition-colors mb-4">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Admin
-      </Link>
+    <div className="min-h-screen bg-sr-bg">
+      <AdminTopNav />
+      <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <ShieldCheck className="h-7 w-7 text-sr-purple-light" />
         <h1 className="text-2xl font-bold text-white">Seller Applications</h1>
@@ -130,6 +130,7 @@ export default function AdminSellerApplicationsPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

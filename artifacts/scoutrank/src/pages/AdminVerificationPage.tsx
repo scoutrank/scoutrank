@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/BrandButton';
-import { Shield, ChevronDown, ChevronUp, Check, X, AlertCircle, Loader2, FileText, ExternalLink, ArrowLeft } from 'lucide-react';
+import { AdminTopNav } from '@/components/layout/AdminTopNav';
+import { Shield, ChevronDown, ChevronUp, Check, X, AlertCircle, Loader2, FileText, ExternalLink } from 'lucide-react';
 
 interface Submission {
   id: string;
@@ -127,10 +127,9 @@ export default function AdminVerificationPage() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <Link to="/admin" className="inline-flex items-center gap-1.5 text-xs text-sr-text-muted hover:text-white transition-colors mb-4">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Admin
-      </Link>
+    <div className="min-h-screen bg-sr-bg">
+      <AdminTopNav />
+      <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <Shield className="h-8 w-8 text-sr-purple" />
         <h1 className="text-2xl font-bold text-white">Verification Queue</h1>
@@ -273,6 +272,7 @@ export default function AdminVerificationPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import type { Organisation } from '@/lib/supabase';
@@ -7,8 +6,9 @@ import { Button } from '@/components/ui/BrandButton';
 import { Select } from '@/components/ui/Select';
 import { SPORT_OPTIONS } from '@/lib/sports';
 import { COUNTRIES, getStatesForCountry } from '@/lib/locations';
+import { AdminTopNav } from '@/components/layout/AdminTopNav';
 import { Building2, Search, Plus, Check, X, Pencil, Loader2,
-  ChevronDown, ChevronUp, Shield, AlertCircle, ToggleLeft, ToggleRight, ArrowLeft,
+  ChevronDown, ChevronUp, Shield, AlertCircle, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { formatSportName } from '@/utils/format';
 import { OrganisationLink } from '@/components/ui/OrganisationLink';
@@ -149,10 +149,9 @@ export default function AdminOrganisationsPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <Link to="/admin" className="inline-flex items-center gap-1.5 text-xs text-sr-text-muted hover:text-white transition-colors mb-4">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Admin
-      </Link>
+    <div className="min-h-screen bg-sr-bg">
+      <AdminTopNav />
+      <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Building2 className="h-7 w-7 text-sr-purple" />
@@ -370,6 +369,7 @@ export default function AdminOrganisationsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

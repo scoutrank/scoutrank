@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import { timeAgo } from '@/utils/time';
-import { AlertTriangle, Loader2, AlertCircle, Check, Trash2, ArrowLeft, History } from 'lucide-react';
+import { AlertTriangle, Loader2, AlertCircle, Check, Trash2, History } from 'lucide-react';
 import { AccountHistoryModal } from '@/components/AccountHistoryModal';
+import { AdminTopNav } from '@/components/layout/AdminTopNav';
 
 interface FlagRow {
   id: string;
@@ -145,10 +146,9 @@ export default function AdminFlaggedContentPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <Link to="/admin" className="inline-flex items-center gap-1.5 text-xs text-sr-text-muted hover:text-white transition-colors mb-4">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Admin
-      </Link>
+    <div className="min-h-screen bg-sr-bg">
+      <AdminTopNav />
+      <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <AlertTriangle className="h-7 w-7 text-yellow-400" />
         <h1 className="text-2xl font-bold text-white">AI Flagged Content</h1>
@@ -307,6 +307,7 @@ export default function AdminFlaggedContentPage() {
           onClose={() => setHistoryModal(null)}
         />
       )}
+      </div>
     </div>
   );
 }

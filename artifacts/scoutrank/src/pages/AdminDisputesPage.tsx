@@ -4,7 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import { scoreVerifiedStat } from '@/lib/aiScoring';
 import { timeAgo } from '@/utils/time';
-import { Gavel, Loader2, AlertCircle, Check, X, ExternalLink, ShieldOff, ArrowLeft } from 'lucide-react';
+import { Gavel, Loader2, AlertCircle, Check, X, ExternalLink, ShieldOff } from 'lucide-react';
+import { AdminTopNav } from '@/components/layout/AdminTopNav';
 
 interface DisputeRow {
   id: string;
@@ -165,10 +166,9 @@ export default function AdminDisputesPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <Link to="/admin" className="inline-flex items-center gap-1.5 text-xs text-sr-text-muted hover:text-white transition-colors mb-4">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Admin
-      </Link>
+    <div className="min-h-screen bg-sr-bg">
+      <AdminTopNav />
+      <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <Gavel className="h-7 w-7 text-sr-purple" />
         <h1 className="text-2xl font-bold text-white">Disputes</h1>
@@ -370,6 +370,7 @@ export default function AdminDisputesPage() {
           </div>
         )
       )}
+      </div>
     </div>
   );
 }
