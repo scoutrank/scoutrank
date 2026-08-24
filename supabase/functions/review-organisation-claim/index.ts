@@ -84,6 +84,22 @@ Deno.serve(async (req: Request) => {
 
     if (!organisationId) { console.error('[review-organisation-claim] No organisationId after processing.'); return json({ error: 'No organisation to link this claim to.' }, 500); }
 
+    // For a 'claim' on an existing org (never an issue for 'register',
+    // which always creates a fresh org), refuse to grant a second owner
+    // if someone else already owns it — this org could have more than
+    // one pending claim, and approving both would otherwise silently
+    // create two unrelated 'owner' rows on the same organisation with no
+    // conflict of any kind. This has to be rejected explicitly rather
+    // than proceeding, so the admin can go resolve the other claim first.
+    if (claim.claim_type === 'claim') {
+      const { data: otherOwner } = await admin.from('organisation_staff')
+        .select('profile_id').eq('organisation_id', organisationId).eq('role', 'owner')
+        .neq('profile_id', claim.claimant_id).maybeSingle();
+      if (otherOwner) {
+        return json({ error: 'This organisation already has an owner from a different approved claim. Reject this claim, or resolve the existing ownership first.' }, 409);
+      }
+    }
+
     // Check they're not already staff (idempotency — an admin re-clicking
     // Approve shouldn't error out on the unique constraint).
     const { data: existingStaff } = await admin.from('organisation_staff')
@@ -99,6 +115,18 @@ Deno.serve(async (req: Request) => {
         console.error('[review-organisation-claim] Failed to grant staff access:', staffErr.message, staffErr.details, staffErr.hint);
         return json({ error: `Claim processed, but failed to grant staff access: ${staffErr.message}` }, 500);
       }
+    }
+
+    // Approving a 'claim' should carry the same trust signal as
+    // approving a 'register' — both mean an admin has confirmed this is
+    // a legitimate club run by this person — but only 'register' was
+    // ever marking the organisation verified (it sets verified: true on
+    // insert above). A claim approval was granting ownership without
+    // ever flipping the verified badge on, even though the admin action
+    // is the same "yes, this is real" decision either way.
+    if (claim.claim_type === 'claim') {
+      const { error: verifyErr } = await admin.from('organisations').update({ verified: true }).eq('id', organisationId);
+      if (verifyErr) console.error('[review-organisation-claim] Failed to mark claimed organisation verified:', verifyErr.message);
     }
 
     const { error: updateErr } = await admin.from('organisation_claims').update({

@@ -572,9 +572,14 @@ export default function FeedPage() {
             return prev;
           });
         }
-        // The thread is actively open — mark read immediately if it's
-        // not our own message bouncing back.
-        if (newMessage.sender_id !== profile.id) {
+        // The thread is open AND actually visible — mark read immediately
+        // if it's not our own message bouncing back. Was previously
+        // marking read just because this conversation was the active one
+        // in React state, even with the tab backgrounded/minimized — a
+        // message that arrived while the user genuinely wasn't looking
+        // still cleared its own unread badge, which undercounts what's
+        // really unseen.
+        if (newMessage.sender_id !== profile.id && document.visibilityState === 'visible') {
           supabase
             .from('conversation_participants')
             .update({ last_read_at: new Date().toISOString() })
@@ -586,6 +591,26 @@ export default function FeedPage() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
+  }, [activeConversation, profile?.id]);
+
+  // Catches up the case above deliberately skips: messages that arrived
+  // in the open thread while the tab was backgrounded. When the tab
+  // becomes visible again with that thread still open, mark it read now
+  // — same as if the user had just opened it.
+  useEffect(() => {
+    if (!activeConversation || !profile) return;
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      supabase
+        .from('conversation_participants')
+        .update({ last_read_at: new Date().toISOString() })
+        .eq('conversation_id', activeConversation)
+        .eq('profile_id', profile.id)
+        .then(() => {});
+      setConversations(prev => prev.map(c => c.conversationId === activeConversation ? { ...c, unread: false } : c));
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [activeConversation, profile?.id]);
 
   // Realtime: keep the conversation list (previews/unread) live even for

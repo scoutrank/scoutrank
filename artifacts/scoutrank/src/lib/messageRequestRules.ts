@@ -33,22 +33,28 @@ export async function canSendMessage(
   // person) — nothing sent yet either way, so the first message is fine.
   if (!conversationId) return { allowed: true };
 
+  // Read from conversation_participants.has_sent_message (SQL #95), not
+  // from currently-existing `messages` rows. A hard "delete for
+  // everyone" removes the message row but does NOT clear this flag (a
+  // DB trigger sets it once and it stays set), so deleting your one
+  // allowed message can't be used to reset the limit and send again.
   const { data: rows, error } = await supabase
-    .from('messages')
-    .select('sender_id')
-    .eq('conversation_id', conversationId);
+    .from('conversation_participants')
+    .select('profile_id, has_sent_message')
+    .eq('conversation_id', conversationId)
+    .in('profile_id', [currentProfileId, otherProfileId]);
 
   if (error) {
     console.error('[messageRequestRules] Failed to check message history:', error.message);
     // Fail open on a lookup error rather than silently blocking sends —
-    // the DB-level RLS/trigger layer is the real backstop for abuse.
+    // the DB-level trigger is the real backstop for abuse either way.
     return { allowed: true };
   }
 
-  const theyReplied = (rows ?? []).some(r => r.sender_id === otherProfileId);
+  const theyReplied = (rows ?? []).some(r => r.profile_id === otherProfileId && r.has_sent_message);
   if (theyReplied) return { allowed: true };
 
-  const iAlreadySent = (rows ?? []).some(r => r.sender_id === currentProfileId);
+  const iAlreadySent = (rows ?? []).some(r => r.profile_id === currentProfileId && r.has_sent_message);
   if (iAlreadySent) {
     return {
       allowed: false,

@@ -56,16 +56,51 @@ export default function AdminOrganisationRequestsPage() {
   const action = async (req: RequestWithProfile, newStatus: 'approved' | 'rejected') => {
     setActioning(req.id);
     setActionError('');
+
+    // Approving here previously only ever updated organisation_requests.status
+    // — the copy right below the buttons tells the admin "Approving will
+    // automatically add this organisation to the registry as verified,"
+    // but nothing actually created the organisations row or set
+    // reviewed_organisation_id, so that never happened and the "View in
+    // registry" link for an approved request was always dead. This now
+    // does what the UI already promises.
+    let reviewedOrganisationId: string | null = null;
+    if (newStatus === 'approved') {
+      const { data: newOrg, error: orgErr } = await supabase.from('organisations').insert({
+        name: req.organisation_name,
+        type: req.organisation_type,
+        sports: [],
+        country: req.country,
+        state: req.state,
+        city: req.city,
+        website: req.website,
+        verified: true,
+        is_active: true,
+      }).select('id').single();
+      if (orgErr || !newOrg) {
+        console.error('[admin-org-requests] failed to create organisation:', orgErr?.message);
+        setActioning(null);
+        setActionError(`Failed to add organisation to the registry: ${orgErr?.message ?? 'unknown error'}`);
+        return;
+      }
+      reviewedOrganisationId = newOrg.id;
+    }
+
     const { error } = await supabase.from('organisation_requests').update({
       status: newStatus,
       admin_notes: adminNotes[req.id] || null,
       reviewer_id: profile?.id,
       reviewed_at: new Date().toISOString(),
+      ...(reviewedOrganisationId ? { reviewed_organisation_id: reviewedOrganisationId } : {}),
     }).eq('id', req.id);
     setActioning(null);
     if (error) {
       console.error('[admin-org-requests] action error:', error.message, error);
-      setActionError(`Failed: ${error.message}`);
+      setActionError(
+        reviewedOrganisationId
+          ? `Organisation was added to the registry, but failed to update this request's status: ${error.message}. Organisation id: ${reviewedOrganisationId}.`
+          : `Failed: ${error.message}`
+      );
       return;
     }
     load();

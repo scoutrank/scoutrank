@@ -522,6 +522,21 @@ export interface CoverageArea {
   created_at: string;
 }
 
+// Real as of SQL #94. Private to the athlete themselves — see
+// athlete_goals.sql for the RLS policy that actually enforces this;
+// the profile-page tab and Scout Bot context are both just UI-layer
+// respect for the same boundary.
+export interface AthleteGoal {
+  id: string;
+  profile_id: string;
+  title: string;
+  notes: string | null;
+  target_date: string | null;
+  status: 'active' | 'completed';
+  created_at: string;
+  updated_at: string;
+}
+
 // Full audit trail for suspend/ban/release actions — the profiles table
 // only holds the current state, this holds every event that ever
 // happened, including who performed it.

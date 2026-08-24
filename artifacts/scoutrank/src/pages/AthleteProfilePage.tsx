@@ -16,7 +16,7 @@ import { compressImage } from '@/lib/imageCompress';
 import { SPORT_OPTIONS, getSportIcon } from '@/lib/sports';
 import { SportComingSoon } from '@/components/ui/SportComingSoon';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
-import type { Profile, Post, StatEventType, AthleteStat, Achievement, MarketplaceListing } from '@/lib/supabase';
+import type { Profile, Post, StatEventType, AthleteStat, Achievement, MarketplaceListing, AthleteGoal } from '@/lib/supabase';
 import {
   MapPin, Calendar, Shield, TrendingUp, Trophy, Award,
   BarChart3, Video, FileText, Sparkles, Activity, Settings,
@@ -25,7 +25,7 @@ import {
   Send, Play, Camera, Check, AlertCircle, Loader2, Plus, Bookmark, Trash2, ShieldOff, Clock, ShoppingBag,
 } from 'lucide-react';
 
-type Tab = 'overview' | 'stats' | 'highlights' | 'achievements' | 'rankings' | 'scoring' | 'posts' | 'saved' | 'listings';
+type Tab = 'overview' | 'stats' | 'highlights' | 'achievements' | 'rankings' | 'scoring' | 'posts' | 'saved' | 'listings' | 'goals';
 
 const baseTabs: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'overview',      label: 'Overview',      icon: Activity },
@@ -51,6 +51,16 @@ const nonAthleteTabs: { id: Tab; label: string; icon: typeof Activity }[] = [
 // never even see the tab exists, let alone be able to click into it.
 const ownerOnlyTabs: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'saved', label: 'Saved', icon: Bookmark },
+];
+
+// "Goals" is private in a stricter sense than "Saved" — not just
+// hidden from other visitors, but athlete-only (a coach/scout/admin
+// owner never sees it) and never shown to a parent even when they're
+// looking at their own linked child's account. See athlete_goals.sql
+// for the RLS policy that's the actual enforcement of this, not just
+// the tab being hidden client-side.
+const athleteOwnerOnlyTabs: { id: Tab; label: string; icon: typeof Activity }[] = [
+  { id: 'goals', label: 'Goals', icon: Target },
 ];
 
 // ── Trust label helper (shared logic with RankingsPage) ───────────────────────
@@ -700,7 +710,7 @@ export default function AthleteProfilePage() {
         {/* Tabs */}
         <div className="border-b border-sr-border mb-6">
           <div className="flex gap-0 overflow-x-auto border-b border-sr-border [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            {[...(profile.role === 'athlete' ? baseTabs : nonAthleteTabs), ...(isOwner ? ownerOnlyTabs : [])]
+            {[...(profile.role === 'athlete' ? baseTabs : nonAthleteTabs), ...(isOwner ? ownerOnlyTabs : []), ...(isOwner && profile.role === 'athlete' ? athleteOwnerOnlyTabs : [])]
               .filter(tab => {
                 // Privacy settings only restrict what OTHER people see —
                 // the owner always sees their own full profile regardless.
@@ -747,6 +757,10 @@ export default function AthleteProfilePage() {
               manipulated activeTab state couldn't leak another user's
               saved posts; this is defense in depth, not the only guard. */}
           {activeTab === 'saved' && isOwner && <SavedTab profileId={profile.id} />}
+          {/* Goals tab: athlete-only AND owner-only (defense in depth,
+              same reasoning as Saved above) — RLS on athlete_goals also
+              independently enforces auth.uid() = profile_id. */}
+          {activeTab === 'goals' && isOwner && profile.role === 'athlete' && <GoalsTab profileId={profile.id} />}
         </div>
       </div>
     </div>
@@ -2827,6 +2841,166 @@ function SavedTab({ profileId }: { profileId: string }) {
           </Link>
         );
       })}
+    </div>
+  );
+}
+
+// ── Goals — private to the athlete, read by Scout Bot ──────────────────
+// Not shared with anyone else who views this profile, including a
+// linked parent or an admin — see the isOwner + role==='athlete' guard
+// at the call site, and athlete_goals.sql for the RLS policy that's the
+// real enforcement of that. Scout Bot (ScoutBotPage.tsx) reads the same
+// table, scoped to the logged-in athlete's own profile_id, to ground its
+// advice in what this athlete says they're actually working toward.
+function GoalsTab({ profileId }: { profileId: string }) {
+  const [goals, setGoals] = useState<AthleteGoal[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [targetDate, setTargetDate] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const load = async () => {
+    setIsLoading(true);
+    const { data, error } = await supabase.from('athlete_goals').select('*').eq('profile_id', profileId).order('created_at', { ascending: false });
+    if (error) console.error('Failed to load goals:', error.message);
+    setGoals((data as AthleteGoal[] | null) ?? []);
+    setIsLoading(false);
+  };
+
+  useEffect(() => { load(); }, [profileId]);
+
+  const handleAdd = async () => {
+    if (!title.trim()) { setFormError('Give your goal a title.'); return; }
+    setSubmitting(true);
+    setFormError('');
+    const { error } = await supabase.from('athlete_goals').insert({
+      profile_id: profileId,
+      title: title.trim(),
+      notes: notes.trim() || null,
+      target_date: targetDate || null,
+    });
+    setSubmitting(false);
+    if (error) { setFormError(error.message); return; }
+    setTitle(''); setNotes(''); setTargetDate(''); setShowForm(false);
+    load();
+  };
+
+  const handleToggleStatus = async (goal: AthleteGoal) => {
+    setTogglingId(goal.id);
+    const nextStatus: AthleteGoal['status'] = goal.status === 'active' ? 'completed' : 'active';
+    const { error } = await supabase.from('athlete_goals').update({ status: nextStatus, updated_at: new Date().toISOString() }).eq('id', goal.id);
+    setTogglingId(null);
+    if (error) { console.error('Failed to update goal:', error.message); return; }
+    setGoals(prev => prev.map(g => g.id === goal.id ? { ...g, status: nextStatus } : g));
+  };
+
+  const handleDelete = async (goalId: string) => {
+    setDeletingId(goalId);
+    const { error } = await supabase.from('athlete_goals').delete().eq('id', goalId);
+    setDeletingId(null);
+    if (error) { console.error('Failed to delete goal:', error.message); return; }
+    setGoals(prev => prev.filter(g => g.id !== goalId));
+  };
+
+  if (isLoading) return <p className="text-sm text-sr-text-muted">Loading...</p>;
+
+  const activeGoals = goals.filter(g => g.status === 'active');
+  const completedGoals = goals.filter(g => g.status === 'completed');
+
+  return (
+    <div>
+      <div className="mb-4 p-3 rounded-lg bg-sr-purple/5 border border-sr-purple/20 text-xs text-sr-text-muted flex items-start gap-2">
+        <Target className="h-3.5 w-3.5 text-sr-purple-light flex-shrink-0 mt-0.5" />
+        <span>Private to you — no one who views your profile can see this, including coaches and scouts. Scout Bot can read these to give you more relevant advice when you chat with it.</span>
+      </div>
+
+      {showForm ? (
+        <div className="card-premium p-4 mb-4">
+          {formError && <div className="mb-3 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">{formError}</div>}
+          <label className="block text-xs text-sr-text-muted mb-1">Goal</label>
+          <input className="input-dark w-full mb-3 text-sm" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Break 12.0s in the 100m" />
+          <label className="block text-xs text-sr-text-muted mb-1">Notes (optional)</label>
+          <textarea className="input-dark w-full mb-3 text-sm resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any details, plan, or why this matters to you" />
+          <label className="block text-xs text-sr-text-muted mb-1">Target date (optional)</label>
+          <input type="date" className="input-dark w-full mb-4 text-sm" value={targetDate} onChange={e => setTargetDate(e.target.value)} />
+          <div className="flex gap-2">
+            <button onClick={() => { setShowForm(false); setFormError(''); }} className="flex-1 text-xs px-3 py-2.5 rounded-lg border border-sr-border text-sr-text-muted hover:border-sr-purple/30">
+              Cancel
+            </button>
+            <button onClick={handleAdd} disabled={submitting}
+              className="flex-1 flex items-center justify-center gap-1.5 text-sm py-2.5 rounded-lg bg-sr-purple text-white hover:bg-sr-purple/90 disabled:opacity-50">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add Goal
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setShowForm(true)}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 mb-4 rounded-lg border border-dashed border-sr-border text-sm text-sr-text-muted hover:border-sr-purple/40 hover:text-white transition-colors">
+          <Plus className="h-4 w-4" /> Add a Goal
+        </button>
+      )}
+
+      {goals.length === 0 && !showForm ? (
+        <div className="card-premium p-12 text-center">
+          <Target className="h-10 w-10 mx-auto text-sr-text-muted mb-3" />
+          <h3 className="text-sm font-semibold text-white mb-1">No goals set yet</h3>
+          <p className="text-xs text-sr-text-muted">Set one and Scout Bot can help you build a plan toward it.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {activeGoals.map(goal => (
+            <GoalCard key={goal.id} goal={goal} onToggle={() => handleToggleStatus(goal)} onDelete={() => handleDelete(goal.id)}
+              toggling={togglingId === goal.id} deleting={deletingId === goal.id} />
+          ))}
+          {completedGoals.length > 0 && (
+            <>
+              <p className="text-xs text-sr-text-muted uppercase tracking-wide mt-6 mb-2">Completed</p>
+              {completedGoals.map(goal => (
+                <GoalCard key={goal.id} goal={goal} onToggle={() => handleToggleStatus(goal)} onDelete={() => handleDelete(goal.id)}
+                  toggling={togglingId === goal.id} deleting={deletingId === goal.id} />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GoalCard({ goal, onToggle, onDelete, toggling, deleting }: {
+  goal: AthleteGoal; onToggle: () => void; onDelete: () => void; toggling: boolean; deleting: boolean;
+}) {
+  const isCompleted = goal.status === 'completed';
+  return (
+    <div className={`card-premium p-4 ${isCompleted ? 'opacity-60' : ''}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <button onClick={onToggle} disabled={toggling} title={isCompleted ? 'Mark as active' : 'Mark as completed'}
+            className={`h-5 w-5 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${
+              isCompleted ? 'bg-sr-purple border-sr-purple' : 'border-sr-border hover:border-sr-purple/50'
+            }`}>
+            {isCompleted && <Check className="h-3 w-3 text-white" />}
+          </button>
+          <div className="min-w-0">
+            <p className={`text-sm font-medium text-white ${isCompleted ? 'line-through text-sr-text-muted' : ''}`}>{goal.title}</p>
+            {goal.notes && <p className="text-xs text-sr-text-muted mt-1 whitespace-pre-wrap">{goal.notes}</p>}
+            {goal.target_date && (
+              <p className="text-[11px] text-sr-purple-light mt-1.5 flex items-center gap-1">
+                <Calendar className="h-3 w-3" />{shortDate(goal.target_date)}
+              </p>
+            )}
+          </div>
+        </div>
+        <button onClick={onDelete} disabled={deleting} title="Delete goal"
+          className="flex-shrink-0 p-1.5 text-sr-text-muted hover:text-red-400 transition-colors">
+          {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+        </button>
+      </div>
     </div>
   );
 }

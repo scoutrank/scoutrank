@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Bot, Send, ArrowLeft, Sparkles, X } from 'lucide-react';
 import { groqStream, SCOUT_BOT_SYSTEM_PROMPT } from '@/lib/groq';
 import type { ChatMessage } from '@/lib/groq';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import type { AthleteGoal } from '@/lib/supabase';
 
 const WELCOME = `Hi! I'm **Scout Bot** — your personal AI sports performance coach. 🏆
 
@@ -24,6 +27,25 @@ const SUGGESTIONS = [
 
 type Message = { id: string; role: 'user' | 'assistant'; content: string; streaming?: boolean };
 
+// Turns the athlete's private Goals (see AthleteProfilePage's GoalsTab)
+// into a short block appended to the system prompt, so Scout Bot's
+// advice can actually reference what this athlete says they're working
+// toward instead of staying generic. Only ever built from the CURRENT
+// logged-in athlete's own goals (fetched below scoped to their own
+// profile_id, same as the RLS policy enforces) — never any other
+// athlete's, and never shown to coach/scout/parent accounts using
+// Scout Bot, since those roles don't have goals at all.
+function buildGoalsContext(goals: AthleteGoal[]): string {
+  const active = goals.filter(g => g.status === 'active');
+  if (active.length === 0) return '';
+  const lines = active.map(g => {
+    const due = g.target_date ? ` (target: ${g.target_date})` : '';
+    const notes = g.notes ? ` — ${g.notes}` : '';
+    return `- ${g.title}${due}${notes}`;
+  });
+  return `\n\nThis athlete has shared the following personal goals with you (private — only they can see these, and only you have this context). Reference them naturally when relevant, don't just recite the list back:\n${lines.join('\n')}`;
+}
+
 function renderMarkdown(text: string): string {
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -43,12 +65,14 @@ function renderMarkdown(text: string): string {
 
 export default function ScoutBotPage() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     { id: 'welcome', role: 'assistant', content: WELCOME },
   ]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState('');
+  const [goals, setGoals] = useState<AthleteGoal[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<boolean>(false);
@@ -56,6 +80,19 @@ export default function ScoutBotPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Only athletes have goals — coaches/scouts/parents chatting with
+  // Scout Bot get the plain system prompt. Scoped to the logged-in
+  // user's own profile id, which is also all RLS on athlete_goals
+  // would ever allow regardless.
+  useEffect(() => {
+    if (!profile || profile.role !== 'athlete') return;
+    supabase.from('athlete_goals').select('*').eq('profile_id', profile.id)
+      .then(({ data, error: err }) => {
+        if (err) { console.error('[ScoutBot] Failed to load goals:', err.message); return; }
+        setGoals((data as AthleteGoal[] | null) ?? []);
+      });
+  }, [profile?.id, profile?.role]);
 
   const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -76,7 +113,7 @@ export default function ScoutBotPage() {
 
     // Build history for Groq (exclude the placeholder streaming message)
     const history: ChatMessage[] = [
-      { role: 'system', content: SCOUT_BOT_SYSTEM_PROMPT },
+      { role: 'system', content: SCOUT_BOT_SYSTEM_PROMPT + buildGoalsContext(goals) },
       ...messages
         .filter(m => m.id !== 'welcome' || m.role === 'assistant')
         .map(m => ({ role: m.role, content: m.content })),
@@ -102,7 +139,7 @@ export default function ScoutBotPage() {
     } finally {
       setIsStreaming(false);
     }
-  }, [isStreaming, messages]);
+  }, [isStreaming, messages, goals]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
