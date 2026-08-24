@@ -45,6 +45,7 @@ export default function DiscoverPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [rankScores, setRankScores] = useState<Record<string, number>>({});
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
+  const [isClubsLoading, setIsClubsLoading] = useState(true);
 
   const statesForCountry = useMemo(() => (countryFilter ? getStatesForCountry(countryFilter) : null), [countryFilter]);
 
@@ -92,9 +93,19 @@ export default function DiscoverPage() {
       .limit(150);
 
     if (trimmed) {
+      // PostgREST's .or() filter string uses comma as the separator
+      // between conditions and parentheses for grouping — a raw comma
+      // or paren typed into search (e.g. "Smith, Jr." or "Coach (U16)")
+      // breaks that syntax and fails the ENTIRE query, not just the
+      // search part. The failure is silent to the user too: it lands in
+      // the res.error branch below, which just logs to console and
+      // leaves the list empty, indistinguishable from "no matches."
+      // Escaping with a backslash (PostgREST's own escape syntax) keeps
+      // these as literal characters in the search term.
+      const searchSafe = trimmed.replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
       // Filter server-side across name and username
       q = q.or(
-        `full_name.ilike.%${trimmed}%,username.ilike.%${trimmed}%`
+        `full_name.ilike.%${searchSafe}%,username.ilike.%${searchSafe}%`
       );
     }
 
@@ -181,21 +192,26 @@ export default function DiscoverPage() {
   // database.
   useEffect(() => {
     let active = true;
+    setIsClubsLoading(true);
     supabase.from('organisations').select('*').eq('verified', true).eq('is_active', true).order('name')
       .then(async ({ data, error }) => {
-        if (error) { console.error('[Discover] Failed to load clubs:', error.message); return; }
+        if (error) { console.error('[Discover] Failed to load clubs:', error.message); if (active) setIsClubsLoading(false); return; }
         const orgs = (data as Organisation[] | null) ?? [];
-        if (orgs.length === 0) { if (active) setClubs([]); return; }
+        if (orgs.length === 0) { if (active) { setClubs([]); setIsClubsLoading(false); } return; }
 
         // Batched member count per club — one query, grouped client-side,
-        // rather than one query per club.
+        // rather than one query per club. Scoped to role='athlete' since
+        // the card label reads "N athletes" — without this filter it
+        // silently counted every affiliated profile (coaches, scouts,
+        // parents included), inflating the number shown.
         const { data: memberRows } = await supabase.from('profiles').select('affiliated_organisation_id')
+          .eq('role', 'athlete')
           .in('affiliated_organisation_id', orgs.map(o => o.id));
         const counts: Record<string, number> = {};
         for (const r of (memberRows ?? []) as { affiliated_organisation_id: string | null }[]) {
           if (r.affiliated_organisation_id) counts[r.affiliated_organisation_id] = (counts[r.affiliated_organisation_id] ?? 0) + 1;
         }
-        if (active) setClubs(orgs.map(o => ({ ...o, member_count: counts[o.id] ?? 0 })));
+        if (active) { setClubs(orgs.map(o => ({ ...o, member_count: counts[o.id] ?? 0 }))); setIsClubsLoading(false); }
       });
     return () => { active = false; };
   }, []);
@@ -440,7 +456,11 @@ export default function DiscoverPage() {
             Claim or Register Your Club
           </Link>
         </div>
-        {filteredClubs.length === 0 ? (
+        {isClubsLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 text-sr-purple animate-spin" />
+          </div>
+        ) : filteredClubs.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-sr-border-light bg-sr-surface p-16 text-center">
             <div className="h-12 w-12 mx-auto mb-4 rounded-xl bg-gradient-to-br from-sr-purple/20 to-sr-blue/20 flex items-center justify-center">
               <Building2 className="h-6 w-6 text-sr-purple-light" />
