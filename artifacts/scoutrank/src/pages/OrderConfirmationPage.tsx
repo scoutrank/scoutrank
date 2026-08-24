@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import type { MarketplaceOrder, Profile } from '@/lib/supabase';
 import { publicUrlFor } from '@/lib/mediaStorage';
@@ -14,6 +15,7 @@ import { ArrowLeft, Loader2, CheckCircle2, Download, ExternalLink, Clock } from 
 export default function OrderConfirmationPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
+  const { profile } = useAuth();
   const [order, setOrder] = useState<MarketplaceOrder | null>(null);
   const [listing, setListing] = useState<{ file_url: string | null; file_path: string | null; delivery_type: string; title: string } | null>(null);
   const [seller, setSeller] = useState<Profile | null>(null);
@@ -21,10 +23,13 @@ export default function OrderConfirmationPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !profile) return;
     let attempts = 0;
     const poll = async () => {
-      const { data, error: err } = await supabase.from('marketplace_orders').select('*').eq('id', id).maybeSingle();
+      // Scoped to buyer_id — this page shows a download link once paid,
+      // so without this check anyone who knew or guessed an order id
+      // could open someone else's paid purchase.
+      const { data, error: err } = await supabase.from('marketplace_orders').select('*').eq('id', id).eq('buyer_id', profile.id).maybeSingle();
       if (err || !data) { setError('Order not found.'); setIsLoading(false); return; }
       const o = data as MarketplaceOrder;
       setOrder(o);
@@ -46,7 +51,7 @@ export default function OrderConfirmationPage() {
       setIsLoading(false);
     };
     poll();
-  }, [id]);
+  }, [id, profile?.id]);
 
   if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 text-sr-purple animate-spin" /></div>;
   if (error || !order) return <div className="max-w-lg mx-auto px-4 py-10 text-center text-sr-text-muted">{error || 'Not found.'}</div>;

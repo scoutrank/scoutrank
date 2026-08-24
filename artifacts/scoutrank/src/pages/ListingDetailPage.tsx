@@ -42,7 +42,15 @@ export default function ListingDetailPage() {
     if (!id) return;
     (async () => {
       setIsLoading(true);
-      const { data, error: err } = await supabase.from('marketplace_listings').select('*').eq('id', id).maybeSingle();
+      // Deliberately excludes file_url/file_path — this page is visible
+      // to anyone who opens the listing, purchased or not, and this
+      // component never renders a download link, so the digital file's
+      // location has no reason to be in the response before someone has
+      // actually paid (see OrderConfirmationPage/MyOrdersPage for the
+      // post-purchase fetch, which is scoped to a paid order).
+      const { data, error: err } = await supabase.from('marketplace_listings')
+        .select('id, seller_id, title, description, category, dna_attribute, price_cents, currency, delivery_type, duration_weeks, status, removal_reason')
+        .eq('id', id).maybeSingle();
       if (err || !data) { setError('Listing not found.'); setIsLoading(false); return; }
       setListing(data as MarketplaceListing);
       const { data: sellerData } = await supabase.from('profiles').select('*').eq('id', (data as MarketplaceListing).seller_id).maybeSingle();
@@ -57,7 +65,11 @@ export default function ListingDetailPage() {
     const channel = supabase
       .channel(`listing-${id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'marketplace_listings', filter: `id=eq.${id}` }, payload => {
-        setListing(payload.new as MarketplaceListing);
+        // Realtime broadcasts the full row regardless of the select()
+        // used for the initial load — strip file_url/file_path here too
+        // so a status-change event can't backfill them into state.
+        const { file_url: _fileUrl, file_path: _filePath, ...rest } = payload.new as MarketplaceListing;
+        setListing(rest as MarketplaceListing);
       })
       .subscribe();
 

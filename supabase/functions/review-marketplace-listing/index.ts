@@ -64,6 +64,11 @@ Deno.serve(async (req: Request) => {
     const { data: listing, error: listingErr } = await admin.from('marketplace_listings').select('*').eq('id', listingId).maybeSingle();
     if (listingErr || !listing) return json({ error: `Listing not found: ${listingErr?.message ?? 'no such listing'}` }, 404);
     if (listing.seller_id !== user.id) return json({ error: 'This listing does not belong to you.' }, 403);
+    // This is what actually flips a listing to 'active' and makes it
+    // purchasable, so it needs its own check that the listing fee was
+    // really paid — the client only calls this after its fee_paid poll
+    // succeeds, but that's a UI sequencing choice, not enforcement.
+    if (!listing.fee_paid) return json({ error: 'The listing fee has not been paid yet.' }, 403);
 
     const priceDisplay = `$${(listing.price_cents / 100).toFixed(2)} ${listing.currency?.toUpperCase() ?? 'USD'}`;
 

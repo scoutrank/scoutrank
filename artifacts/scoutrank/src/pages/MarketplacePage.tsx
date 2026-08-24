@@ -29,7 +29,14 @@ export default function MarketplacePage() {
   const [weakestAttribute, setWeakestAttribute] = useState<{ key: string; label: string; score: number } | null>(null);
 
   useEffect(() => {
-    supabase.from('marketplace_listings').select('*').eq('status', 'active').order('created_at', { ascending: false })
+    // Deliberately excludes file_url/file_path — this is the public
+    // browse grid, visible to anyone whether or not they've bought
+    // anything, so digital-download file locations have no reason to
+    // be in this response at all (they're only needed after purchase,
+    // see OrderConfirmationPage/MyOrdersPage).
+    supabase.from('marketplace_listings')
+      .select('id, seller_id, title, description, category, dna_attribute, price_cents, currency, delivery_type, duration_weeks, status, created_at')
+      .eq('status', 'active').order('created_at', { ascending: false })
       .then(({ data }) => { setListings((data as MarketplaceListing[] | null) ?? []); setIsLoading(false); });
 
     // Find the athlete's single weakest DNA attribute with real data, to

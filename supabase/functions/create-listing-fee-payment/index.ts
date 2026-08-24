@@ -18,7 +18,7 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
 // 15% of the seller's own asking price, charged upfront to post a
-// listing — separate from the 10% buyer-side surcharge applied later
+// listing — separate from the 5% buyer-side surcharge applied later
 // at sale time (see create-checkout-session).
 const LISTING_FEE_PERCENT = 15;
 
@@ -51,6 +51,15 @@ Deno.serve(async (req: Request) => {
     if (listingErr || !listing) return json({ error: `Listing not found: ${listingErr?.message ?? 'no such listing'}` }, 404);
     if (listing.seller_id !== user.id) return json({ error: 'This listing does not belong to you.' }, 403);
     if (listing.fee_paid) return json({ error: 'The listing fee has already been paid for this listing.' }, 400);
+
+    // The client only shows the "create a listing" form to approved
+    // sellers, but that's a UI gate, not a security boundary — anyone
+    // authenticated could call this function directly. Re-check
+    // seller_status here since this is the actual point where money
+    // moves and a listing enters the review pipeline.
+    const { data: sellerProfile, error: sellerErr } = await admin.from('profiles').select('seller_status').eq('id', user.id).maybeSingle();
+    if (sellerErr || !sellerProfile) return json({ error: 'Could not verify seller status.' }, 403);
+    if (sellerProfile.seller_status !== 'approved') return json({ error: 'You must be an approved seller before you can list a product for sale.' }, 403);
 
     const feeCents = Math.round(listing.price_cents * LISTING_FEE_PERCENT / 100);
 
