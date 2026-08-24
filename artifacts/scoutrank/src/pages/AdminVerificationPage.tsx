@@ -97,8 +97,20 @@ export default function AdminVerificationPage() {
     window.open(data.signedUrl, '_blank');
   };
 
+  // Maps a submission's status to what profiles.coach_scout_verification_status
+  // should become — the badge, Discover minor-visibility, and message-safety
+  // gating all read that profile column, not the submission row.
+  const STATUS_TO_PROFILE_STATUS: Record<string, 'pending' | 'verified' | 'rejected'> = {
+    approved: 'verified',
+    rejected: 'rejected',
+    submitted: 'pending',
+    under_review: 'pending',
+    more_info_requested: 'pending',
+  };
+
   const action = async (submissionId: string, newStatus: string) => {
     setActioning(submissionId);
+    const sub = submissions.find(s => s.id === submissionId);
     const { error } = await supabase
       .from('verification_submissions')
       .update({
@@ -108,12 +120,32 @@ export default function AdminVerificationPage() {
         reviewed_at: new Date().toISOString(),
       })
       .eq('id', submissionId);
-    setActioning(null);
     if (error) {
+      setActioning(null);
       console.error('[admin-verification] action error:', error.message, error);
       alert(`Failed to update submission: ${error.message}`);
       return;
     }
+
+    // This is the step that actually matters for the applicant — the
+    // submission row updating alone had NO real effect anywhere else in
+    // the app. Previously nothing ever wrote coach_scout_verification_status
+    // at all, so clicking "Verify" never actually verified anyone: no
+    // badge, no unlocked visibility to minors, regardless of how many
+    // submissions got approved here.
+    if (sub?.profile_id) {
+      const profileStatus = STATUS_TO_PROFILE_STATUS[newStatus] ?? null;
+      const { error: profileErr } = await supabase
+        .from('profiles')
+        .update({ coach_scout_verification_status: profileStatus })
+        .eq('id', sub.profile_id);
+      if (profileErr) {
+        console.error('[admin-verification] Failed to update profile verification status:', profileErr.message);
+        alert(`Submission updated, but failed to update the applicant's verification status: ${profileErr.message}`);
+      }
+    }
+
+    setActioning(null);
     loadSubmissions();
     setExpanded(null);
   };

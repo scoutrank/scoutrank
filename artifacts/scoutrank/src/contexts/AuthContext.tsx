@@ -232,9 +232,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (signUpData.session) {
       await applySession(signUpData.session);
       // Best-effort IP capture for ban-evasion detection — genuinely
-      // optional, a failure here should never block signup itself.
+      // optional, a failure here should never block signup itself. This is
+      // awaited before signUp() returns, so an unresponsive ipify.org with
+      // no timeout would previously hang the entire signup flow (and any
+      // live demo of it) indefinitely instead of just failing this one
+      // optional step — bounding it with a timeout fixes that.
       try {
-        const ipRes = await fetch('https://api.ipify.org?format=json');
+        const ipRes = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(3000) });
         if (ipRes.ok) {
           const { ip } = await ipRes.json();
           if (ip) await supabase.from('profiles').update({ signup_ip: ip }).eq('id', signUpData.session.user.id);

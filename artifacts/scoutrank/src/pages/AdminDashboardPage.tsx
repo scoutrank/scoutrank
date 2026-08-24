@@ -78,7 +78,12 @@ export default function AdminDashboardPage() {
       supabase.from('posts').select('id', { count: 'exact', head: true }),
       supabase.from('organisations').select('id', { count: 'exact', head: true }).eq('verified', true),
       supabase.from('stat_disputes').select('id', { count: 'exact', head: true }).eq('status', 'open'),
-      supabase.from('verification_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      // AdminVerificationPage's own default tab ("New") filters on
+      // status = 'submitted' — that's what a fresh submission actually
+      // gets. This tile was filtering on 'pending' instead, a status no
+      // row ever has, so it always read 0 regardless of how many
+      // submissions were actually sitting in the queue.
+      supabase.from('verification_submissions').select('id', { count: 'exact', head: true }).eq('status', 'submitted'),
       supabase.from('flagged_content').select('id', { count: 'exact', head: true }).eq('status', 'open'),
       supabase.from('reports').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
       supabase.from('account_disputes').select('id', { count: 'exact', head: true }).eq('status', 'open'),

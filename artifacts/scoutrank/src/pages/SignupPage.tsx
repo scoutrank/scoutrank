@@ -56,7 +56,11 @@ export default function SignupPage() {
       return {
         valid: false,
         age,
-        message: `ScoutRank requires athletes to be at least 16 years old to create their own account. Based on your date of birth, you are currently ${age}. Please ask a parent or guardian to manage your account, or return when you're 16+.`,
+        // This check runs for every role (athlete/coach/scout/parent all
+        // share this same step-1 form), but the message always said
+        // "athletes" regardless of which role the person was signing up
+        // as — wrong copy for a coach, scout, or parent hitting this gate.
+        message: `ScoutRank requires ${form.role === 'athlete' ? 'athletes' : 'users'} to be at least 16 years old to create their own account. Based on your date of birth, you are currently ${age}. Please ask a parent or guardian to manage your account, or return when you're 16+.`,
       };
     }
     return { valid: true };

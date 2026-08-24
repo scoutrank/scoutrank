@@ -59,9 +59,15 @@ export function ShareToFriendModal({ postId, currentProfile, open, onClose }: Sh
         return;
       }
 
+      // Only the fields actually used here are needed — select('*') was
+      // pulling every profile column (including things like date_of_birth)
+      // to the client for no reason. Keep 'age', 'role', and
+      // 'coach_scout_verification_status' though: isConversationBlocked()
+      // (called from handleSend below) needs them for the minor-safety
+      // check, even though they're not rendered.
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, username, first_name, last_name, avatar_url, age, role, coach_scout_verification_status')
         .in('id', mutualIds);
 
       if (profilesError) console.error('[ShareToFriendModal] Failed to load mutual profiles:', profilesError.message);
@@ -73,11 +79,21 @@ export function ShareToFriendModal({ postId, currentProfile, open, onClose }: Sh
   const runSearch = useCallback((q: string) => {
     if (!currentProfile || !q.trim()) { setSearchResults([]); return; }
     setSearching(true);
+    // PostgREST treats commas and parens inside a .or() filter as
+    // delimiters/grouping syntax, so a raw search term containing them
+    // (e.g. "smith, john") broke the whole query silently — the .then()
+    // below only console.errors, so the UI just showed "No one found."
+    // Escaping with a backslash (PostgREST's own escape syntax, same fix
+    // as DiscoverPage.tsx's search) keeps these as literal characters.
+    const searchSafe = q.trim().replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
     supabase
       .from('profiles')
-      .select('*')
+      // Same minimal column set as the mutuals query above — only what's
+      // rendered, plus what isConversationBlocked() needs for the minor
+      // safety check in handleSend.
+      .select('id, username, first_name, last_name, avatar_url, age, role, coach_scout_verification_status')
       .neq('id', currentProfile.id)
-      .or(`username.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`)
+      .or(`username.ilike.%${searchSafe}%,first_name.ilike.%${searchSafe}%,last_name.ilike.%${searchSafe}%`)
       .limit(15)
       .then(({ data, error }) => {
         if (error) console.error('[ShareToFriendModal] Search failed:', error.message);

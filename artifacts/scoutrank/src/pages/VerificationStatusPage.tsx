@@ -504,6 +504,21 @@ function VerificationForm({ profile, isResubmit, onSuccess }: VerificationFormPr
         );
         if (docsError) throw new Error(docsError.message);
       }
+
+      // onSuccess reloads the page expecting to now see the "pending"
+      // state (see its own comment below) — that only works if
+      // coach_scout_verification_status actually becomes 'pending' here.
+      // It previously never did, so a fresh submission just silently
+      // showed the same empty form again after reload (submission was
+      // recorded, but nothing about the page looked different), and
+      // nothing stopped the same person from submitting several more
+      // times in the meantime since showForm never turned false.
+      const { error: statusError } = await supabase
+        .from('profiles')
+        .update({ coach_scout_verification_status: 'pending' })
+        .eq('id', profile.id);
+      if (statusError) console.error('[verification] Failed to set pending status:', statusError.message);
+
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
