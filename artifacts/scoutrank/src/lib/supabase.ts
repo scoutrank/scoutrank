@@ -32,7 +32,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 console.info('[supabase] connecting to:', supabaseUrl);
 
-export { supabaseUrl };
+export { supabaseUrl, supabaseAnonKey };
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

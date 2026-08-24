@@ -1,6 +1,15 @@
 // Groq AI helper — used for Scout Bot, profile overviews, resume generation,
-// and stat plausibility checks. All calls go directly from the browser to
-// Groq's OpenAI-compatible endpoint using the VITE_GROQ_API_KEY secret.
+// and stat plausibility checks.
+//
+// groqChat/groqVisionChat below still call Groq directly from the browser
+// using VITE_GROQ_API_KEY — that's a Vite env var, which gets baked as a
+// literal string into the built client bundle, so the real API key ships
+// to every visitor and is readable in devtools. groqStream (Scout Bot's
+// chat, the highest-traffic caller) has been moved behind the
+// scout-bot-chat Edge Function so its key stays server-side; the other
+// two still need the same treatment in a follow-up pass.
+
+import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY ?? '';
 const GROQ_BASE = 'https://api.groq.com/openai/v1';
@@ -95,20 +104,25 @@ export async function groqChat(messages: ChatMessage[], maxTokens = 1024): Promi
  *   for await (const token of groqStream(messages)) {
  *     setContent(prev => prev + token);
  *   }
+ *
+ * Routed through the scout-bot-chat Edge Function rather than calling
+ * Groq directly — see the note at the top of this file. The function
+ * streams Groq's own response straight back unchanged, so the parsing
+ * below is identical to talking to Groq directly.
  */
 export async function* groqStream(messages: ChatMessage[], maxTokens = 1024): AsyncGenerator<string> {
-  const res = await fetch(`${GROQ_BASE}/chat/completions`, {
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+  if (!accessToken) throw new Error('Not signed in — cannot chat with Scout Bot.');
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/scout-bot-chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
+      'Authorization': `Bearer ${accessToken}`,
+      'apikey': supabaseAnonKey,
     },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages,
-      max_tokens: maxTokens,
-      stream: true,
-    }),
+    body: JSON.stringify({ messages, maxTokens }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
