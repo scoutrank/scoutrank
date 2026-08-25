@@ -42,7 +42,23 @@ export async function processNewStatSubmission(input: SubmissionInput): Promise<
   });
 
   if (error) {
-    return { status: 'error', error: `Review service failed: ${error.message}` };
+    // supabase.functions.invoke()'s error.message is a generic
+    // "Edge Function returned a non-2xx status code" — it discards the
+    // actual JSON body the function returned (e.g. which AI provider's
+    // key failed), which is the one piece of information that actually
+    // helps diagnose this. FunctionsHttpError carries the real Response
+    // on `.context`; read the real message out of it when present.
+    let detail = error.message;
+    try {
+      const context = (error as { context?: Response }).context;
+      if (context) {
+        const body = await context.clone().json().catch(() => null);
+        if (body?.error) detail = body.error;
+      }
+    } catch {
+      // Fall back to the generic message below.
+    }
+    return { status: 'error', error: `Review service failed: ${detail}` };
   }
   if (data?.error) {
     return { status: 'error', error: data.error };
