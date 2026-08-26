@@ -108,23 +108,25 @@ export default function RankingsPage() {
         ((profileData ?? []) as Profile[]).map(p => [p.id, p])
       );
 
-      // Pool count per sport: number of distinct athletes ranked in each (sport, division).
-      // Built from raw rankData (before profile filtering) for accuracy.
-      const sportCountMap = new Map<string, number>();
-      for (const r of (rankData as { profile_id: string; sport: string }[])) {
-        // count distinct profile_ids per sport
-        sportCountMap.set(r.sport, (sportCountMap.get(r.sport) ?? 0) + 1);
-      }
-      // The above counts rows, not distinct profile_ids. Recount using a set.
+      // Filter to rows whose profile actually still exists (and passed the
+      // athlete/active filter above) BEFORE computing pool counts — a
+      // `rankings` row can outlive its profile (e.g. a manual account
+      // deletion that didn't also clean up `rankings`), and counting
+      // those rows would inflate the pool size for a sport that no
+      // longer really has that many ranked athletes in it.
+      const filteredRankData = (rankData as { profile_id: string; sport: string; rank_score: number; division: string }[])
+        .filter(r => profileMap[r.profile_id]);
+
+      // Pool count per sport: number of distinct (real, existing) athletes ranked in each (sport, division).
       const sportProfileSets = new Map<string, Set<string>>();
-      for (const r of (rankData as { profile_id: string; sport: string }[])) {
+      for (const r of filteredRankData) {
         if (!sportProfileSets.has(r.sport)) sportProfileSets.set(r.sport, new Set());
         sportProfileSets.get(r.sport)!.add(r.profile_id);
       }
+      const sportCountMap = new Map<string, number>();
       sportProfileSets.forEach((ids, s) => sportCountMap.set(s, ids.size));
 
-      const allRows = ((rankData as { profile_id: string; sport: string; rank_score: number; division: string }[]))
-        .filter(r => profileMap[r.profile_id])
+      const allRows = filteredRankData
         .map(r => ({ ...r, profiles: profileMap[r.profile_id], poolCount: sportCountMap.get(r.sport) ?? 1 })) as RankingRow[];
 
       // Deduplicate by profile_id, keeping the row with the highest rank_score.

@@ -128,9 +128,20 @@ export default function DashboardPage() {
       if (bestRanking?.sport) {
         supabase.from('rankings').select('profile_id')
           .eq('sport', bestRanking.sport).eq('division', 'Open')
-          .then(({ data }) => {
-            const distinct = new Set((data ?? []).map((r: { profile_id: string }) => r.profile_id)).size;
-            setScorePoolCount(Math.max(distinct, 1));
+          .then(async ({ data }) => {
+            const distinctIds = [...new Set((data ?? []).map((r: { profile_id: string }) => r.profile_id))];
+            if (distinctIds.length === 0) { setScorePoolCount(1); return; }
+            // A rankings row can outlive its profile (e.g. a manual account
+            // deletion that didn't also clean up rankings) — count only
+            // ids that still have a real, active athlete profile behind
+            // them, same population the leaderboard itself uses, so this
+            // "pool size" can't be inflated by orphaned rows.
+            const { data: existing } = await supabase.from('profiles')
+              .select('id')
+              .in('id', distinctIds)
+              .eq('role', 'athlete')
+              .or('account_status.is.null,account_status.eq.active');
+            setScorePoolCount(Math.max((existing ?? []).length, 1));
           });
       }
       const sportRankRows = (sportRankingsRes.data as { sport: string; rank_score: number }[] | null) ?? [];
