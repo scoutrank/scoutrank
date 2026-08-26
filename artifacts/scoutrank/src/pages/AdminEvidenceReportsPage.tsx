@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import { timeAgo } from '@/utils/time';
 import { applyAccountModeration, issueWarning, endOfDayISOString, type ModerationAction } from '@/lib/accountModeration';
-import { resolveStatEvidenceUrl } from '@/lib/statEvidence';
+import { statEvidencePaths, resolveStatEvidenceUrl, resolveStatEvidenceUrls } from '@/lib/statEvidence';
 import { Loader2, AlertCircle, Flag, Check, X, Play, Trash2, ShieldOff, Ban } from 'lucide-react';
 import { AdminTopNav } from '@/components/layout/AdminTopNav';
 
@@ -20,6 +20,7 @@ interface ReportRow {
     id: string;
     value: number;
     evidence_url: string | null;
+    evidence_urls: string[] | null;
     evidence_description: string | null;
     verification_status: string;
     profiles: { id: string; first_name: string; last_name: string; username: string } | null;
@@ -35,21 +36,22 @@ export default function AdminEvidenceReportsPage() {
   const [actioning, setActioning] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'open' | 'resolved' | 'all'>('open');
   const [viewing, setViewing] = useState<ReportRow | null>(null);
-  const [viewingUrl, setViewingUrl] = useState<string | null>(null);
+  const [viewingUrls, setViewingUrls] = useState<string[]>([]);
   const [takingActionOn, setTakingActionOn] = useState<string | null>(null);
   const [chosenAction, setChosenAction] = useState<ModerationAction | 'warn'>('warn');
   const [actionReason, setActionReason] = useState('');
   const [suspendUntil, setSuspendUntil] = useState('');
 
-  // Resolve a fresh signed URL whenever a different report's evidence is
-  // opened (evidence_url may be a legacy public URL or a bare storage
-  // path — see src/lib/statEvidence.ts).
+  // Resolve fresh signed URLs whenever a different report's evidence is
+  // opened — a stat may carry more than one file, and each may be a
+  // legacy public URL or a bare storage path (see src/lib/statEvidence.ts).
   useEffect(() => {
-    const url = viewing?.athlete_stats?.evidence_url;
-    if (!url) { setViewingUrl(null); return; }
+    if (!viewing?.athlete_stats) { setViewingUrls([]); return; }
     let cancelled = false;
-    setViewingUrl(null);
-    resolveStatEvidenceUrl(url).then(u => { if (!cancelled) setViewingUrl(u); });
+    setViewingUrls([]);
+    resolveStatEvidenceUrls(viewing.athlete_stats.evidence_url, viewing.athlete_stats.evidence_urls).then(urls => {
+      if (!cancelled) setViewingUrls(urls);
+    });
     return () => { cancelled = true; };
   }, [viewing]);
 
@@ -96,13 +98,17 @@ export default function AdminEvidenceReportsPage() {
     const { error: rankErr } = await supabase.from('rankings').delete().eq('profile_id', targetUserId);
     if (rankErr) { setActioning(null); setError(`Score reset, but failed to clear rankings: ${rankErr.message}`); return; }
 
-    // account_moderation_log.evidence_url is a separate, permanent record —
-    // it still expects a directly-usable URL, not a bare storage path, so
-    // resolve one here before handing it off. Using a week-long expiry
-    // since this is meant to document the action, not a one-time view;
-    // it'll still eventually go stale like any signed URL, which is a
-    // pre-existing limitation of that log (out of scope to fully fix here).
-    const moderationEvidenceUrl = await resolveStatEvidenceUrl(row.athlete_stats.evidence_url, 60 * 60 * 24 * 7);
+    // account_moderation_log.evidence_url is a separate, permanent record
+    // with a single-URL column — it can't hold every file if the stat had
+    // several, so this carries over just the first one (still enough to
+    // substantiate the action; the full set stays visible on the stat
+    // itself). It still expects a directly-usable URL, not a bare storage
+    // path, so resolve one here before handing it off. Using a week-long
+    // expiry since this is meant to document the action, not a one-time
+    // view; it'll still eventually go stale like any signed URL, which is
+    // a pre-existing limitation of that log (out of scope to fully fix here).
+    const firstEvidencePath = statEvidencePaths(row.athlete_stats.evidence_url, row.athlete_stats.evidence_urls)[0] ?? null;
+    const moderationEvidenceUrl = await resolveStatEvidenceUrl(firstEvidencePath, 60 * 60 * 24 * 7);
     const result = chosenAction === 'warn'
       ? await issueWarning({ performedBy: profile.id, targetUserId, reason: actionReason.trim() })
       : await applyAccountModeration({
@@ -134,7 +140,7 @@ export default function AdminEvidenceReportsPage() {
     setError('');
     let q = supabase
       .from('stat_evidence_reports')
-      .select('id, stat_id, reason, status, resolution, created_at, reporter:reporter_id(first_name, last_name, username), athlete_stats(id, value, evidence_url, evidence_description, verification_status, profiles(id, first_name, last_name, username), stat_event_types(label, unit))')
+      .select('id, stat_id, reason, status, resolution, created_at, reporter:reporter_id(first_name, last_name, username), athlete_stats(id, value, evidence_url, evidence_urls, evidence_description, verification_status, profiles(id, first_name, last_name, username), stat_event_types(label, unit))')
       .order('created_at', { ascending: false });
     if (statusFilter !== 'all') q = q.eq('status', statusFilter);
     const { data, error: qErr } = await q;
@@ -203,7 +209,7 @@ export default function AdminEvidenceReportsPage() {
                 </p>
                 <p className="text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-2 mb-3">{r.reason}</p>
 
-                {s?.evidence_url && (
+                {statEvidencePaths(s?.evidence_url, s?.evidence_urls).length > 0 && (
                   <button onClick={() => setViewing(r)} className="text-xs text-sr-purple-light hover:text-white flex items-center gap-1 mb-3">
                     <Play className="h-3.5 w-3.5" /> View Evidence
                   </button>
@@ -263,22 +269,31 @@ export default function AdminEvidenceReportsPage() {
         </div>
       )}
 
-      {viewing?.athlete_stats?.evidence_url && (
+      {viewing?.athlete_stats && statEvidencePaths(viewing.athlete_stats.evidence_url, viewing.athlete_stats.evidence_urls).length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={() => setViewing(null)}>
-          <div className="card-premium max-w-md w-full" onClick={e => e.stopPropagation()}>
+          <div className="card-premium max-w-md w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-sr-border flex items-center justify-between">
               <p className="text-sm font-semibold text-white">Evidence</p>
               <button onClick={() => setViewing(null)} className="text-sr-text-muted hover:text-white"><X className="h-4 w-4" /></button>
             </div>
-            <div className="bg-black flex items-center justify-center max-h-[60vh]">
-              {viewingUrl ? (
-                /^.*\.(mp4|mov|webm|m4v)(\?|$)/i.test(viewingUrl) ? (
-                  <video src={viewingUrl} controls className="max-h-[60vh] w-full" />
-                ) : (
-                  <img src={viewingUrl} alt="" className="max-h-[60vh] w-full object-contain" />
-                )
+            <div className="bg-black max-h-[60vh] overflow-y-auto divide-y divide-white/10">
+              {viewingUrls.length === 0 ? (
+                <div className="p-8 text-sr-text-muted text-sm text-center">Loading evidence…</div>
               ) : (
-                <div className="p-8 text-sr-text-muted text-sm">Loading evidence…</div>
+                viewingUrls.map((url, i) => (
+                  <div key={url} className="flex flex-col items-center justify-center">
+                    {viewingUrls.length > 1 && (
+                      <p className="w-full text-[10px] text-sr-text-muted uppercase tracking-wide px-3 pt-2">
+                        {i + 1} of {viewingUrls.length}
+                      </p>
+                    )}
+                    {/^.*\.(mp4|mov|webm|m4v)(\?|$)/i.test(url) ? (
+                      <video src={url} controls className="max-h-[60vh] w-full" />
+                    ) : (
+                      <img src={url} alt="" className="max-h-[60vh] w-full object-contain" />
+                    )}
+                  </div>
+                ))
               )}
             </div>
             {viewing.athlete_stats.evidence_description && (

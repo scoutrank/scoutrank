@@ -5,8 +5,8 @@ import { supabase, fullName, displayScoutRank, displayRole } from '@/lib/supabas
 import { BookmarkIcon, CheckmarkIcon, TrendUpIcon, TrendDownIcon } from '@/components/icons';
 import { TrustBadge } from '@/components/ui/TrustBadge';
 import { uploadMediaBlob, uploadResumable, MAX_UPLOAD_BYTES } from '@/lib/mediaStorage';
-import { processNewStatSubmission } from '@/lib/aiEvidenceReview';
-import { statEvidencePath, resolveStatEvidenceUrl } from '@/lib/statEvidence';
+import { processNewStatSubmission, type EvidenceMedia } from '@/lib/aiEvidenceReview';
+import { statEvidencePaths, resolveStatEvidenceUrl, resolveStatEvidenceUrls } from '@/lib/statEvidence';
 import { triggerPostModeration } from '@/lib/postModeration';
 import { Button } from '@/components/ui/BrandButton';
 import { Select } from '@/components/ui/Select';
@@ -27,6 +27,11 @@ import {
 } from 'lucide-react';
 
 type Tab = 'overview' | 'stats' | 'highlights' | 'achievements' | 'rankings' | 'scoring' | 'posts' | 'saved' | 'listings' | 'goals';
+
+// Cap on photos/clips attached to a single stat submission — keeps upload
+// time and AI-review cost/latency reasonable (see FRAMES_PER_VIDEO in
+// aiEvidenceReview.ts for the review-side half of that budget).
+const MAX_EVIDENCE_FILES = 5;
 
 const baseTabs: { id: Tab; label: string; icon: typeof Activity }[] = [
   { id: 'overview',      label: 'Overview',      icon: Activity },
@@ -1160,7 +1165,10 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
   const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
-  const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null);
+  // Bare storage paths for every evidence file attached to the stat
+  // currently being submitted — a stat can carry several photos/clips
+  // now, not just one (see handleEvidenceUpload).
+  const [evidenceUrls, setEvidenceUrls] = useState<string[]>([]);
   const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
   const [evidenceUploadPercent, setEvidenceUploadPercent] = useState(0);
   const evidenceFileRef = useRef<HTMLInputElement>(null);
@@ -1171,7 +1179,7 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<(AthleteStat & { stat_event_types: StatEventType | null }) | null>(null);
   const [viewingEvidence, setViewingEvidence] = useState<(AthleteStat & { stat_event_types: StatEventType | null }) | null>(null);
-  const [viewingEvidenceUrl, setViewingEvidenceUrl] = useState<string | null>(null);
+  const [viewingEvidenceUrls, setViewingEvidenceUrls] = useState<string[]>([]);
   const [reportingEvidence, setReportingEvidence] = useState(false);
   const [reportReason, setReportReason] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
@@ -1182,15 +1190,16 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
   const isCustomEvent = selectedEventTypeId === '__custom__';
   const isOtherSport  = selectedSport === 'other';
 
-  // Resolve a fresh signed URL whenever a different stat's evidence is
-  // opened in the viewer — evidence_url may be a legacy public URL or a
-  // bare storage path (see src/lib/statEvidence.ts).
+  // Resolve fresh signed URLs whenever a different stat's evidence is
+  // opened in the viewer — each file may be a legacy public URL or a bare
+  // storage path, and a stat may now have more than one (see
+  // src/lib/statEvidence.ts).
   useEffect(() => {
-    if (!viewingEvidence?.evidence_url) { setViewingEvidenceUrl(null); return; }
+    if (!viewingEvidence) { setViewingEvidenceUrls([]); return; }
     let cancelled = false;
-    setViewingEvidenceUrl(null);
-    resolveStatEvidenceUrl(viewingEvidence.evidence_url).then(url => {
-      if (!cancelled) setViewingEvidenceUrl(url);
+    setViewingEvidenceUrls([]);
+    resolveStatEvidenceUrls(viewingEvidence.evidence_url, viewingEvidence.evidence_urls).then(urls => {
+      if (!cancelled) setViewingEvidenceUrls(urls);
     });
     return () => { cancelled = true; };
   }, [viewingEvidence]);
@@ -1220,14 +1229,12 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
     setDeleteTarget(null);
     setIsDeleting(false);
 
-    // Clean up storage evidence if present.
-    if (stat.evidence_url) {
+    // Clean up storage evidence if present — handles legacy single-file
+    // rows, new multi-file rows, and any mix of full-URL/bare-path values.
+    const storagePaths = statEvidencePaths(stat.evidence_url, stat.evidence_urls);
+    if (storagePaths.length > 0) {
       try {
-        // Handles both legacy full-URL rows and new bare-path rows.
-        const storagePath = statEvidencePath(stat.evidence_url);
-        if (storagePath) {
-          await supabase.storage.from('stat-evidence').remove([storagePath]);
-        }
+        await supabase.storage.from('stat-evidence').remove(storagePaths);
       } catch {
         // Storage cleanup failure is non-fatal — DB row is already deleted.
       }
@@ -1247,41 +1254,59 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
   };
 
   const handleEvidenceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const isPhotoOrVideo = file.type.startsWith('image/') || file.type.startsWith('video/');
-    if (!isPhotoOrVideo) { setError('Evidence must be a photo or video file.'); return; }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setError(`File is too large (${(file.size / 1024 / 1024 / 1024).toFixed(2)}GB). Maximum is 4GB.`);
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ''; // allow re-selecting the same file(s) later
+    if (files.length === 0) return;
+
+    const room = MAX_EVIDENCE_FILES - evidenceUrls.length;
+    if (room <= 0) {
+      setError(`You can attach up to ${MAX_EVIDENCE_FILES} photos/clips per stat.`);
       return;
     }
-    setIsUploadingEvidence(true);
-    setEvidenceUploadPercent(0);
-    setError('');
-    try {
-      const isPhoto = file.type.startsWith('image/');
-      const fileToUpload = isPhoto ? await compressImage(file) : file;
-      const ext = isPhoto ? 'jpg' : (file.name.split('.').pop() ?? 'bin');
-      const path = `${profileId}/${Date.now()}.${ext}`;
-      // Resumable/chunked upload — survives network hiccups (resumes
-      // instead of restarting from zero) and reports real progress,
-      // instead of one fragile all-or-nothing request that can silently
-      // fail partway through on a large video.
-      await uploadResumable('stat-evidence', path, fileToUpload, {
-        contentType: fileToUpload.type,
-        onProgress: p => setEvidenceUploadPercent(p.percent),
-      });
-      // Store just the bare storage path, not a permanent public URL — the
-      // stat-evidence bucket is being flipped to private, so every render
-      // site resolves a fresh signed URL on demand instead (see
-      // src/lib/statEvidence.ts).
-      setEvidenceUrl(path);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Upload failed: ${msg}`);
-    } finally {
-      setIsUploadingEvidence(false);
+    const toUpload = files.slice(0, room);
+    if (files.length > toUpload.length) {
+      setError(`Only attaching the first ${toUpload.length} — ${MAX_EVIDENCE_FILES} files max per stat.`);
+    } else {
+      setError('');
     }
+
+    for (const file of toUpload) {
+      const isPhotoOrVideo = file.type.startsWith('image/') || file.type.startsWith('video/');
+      if (!isPhotoOrVideo) { setError('Evidence must be a photo or video file.'); continue; }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setError(`File is too large (${(file.size / 1024 / 1024 / 1024).toFixed(2)}GB). Maximum is 4GB.`);
+        continue;
+      }
+      setIsUploadingEvidence(true);
+      setEvidenceUploadPercent(0);
+      try {
+        const isPhoto = file.type.startsWith('image/');
+        const fileToUpload = isPhoto ? await compressImage(file) : file;
+        const ext = isPhoto ? 'jpg' : (file.name.split('.').pop() ?? 'bin');
+        const path = `${profileId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        // Resumable/chunked upload — survives network hiccups (resumes
+        // instead of restarting from zero) and reports real progress,
+        // instead of one fragile all-or-nothing request that can silently
+        // fail partway through on a large video.
+        await uploadResumable('stat-evidence', path, fileToUpload, {
+          contentType: fileToUpload.type,
+          onProgress: p => setEvidenceUploadPercent(p.percent),
+        });
+        // Store just the bare storage path, not a permanent public URL — the
+        // stat-evidence bucket is being flipped to private, so every render
+        // site resolves a fresh signed URL on demand instead (see
+        // src/lib/statEvidence.ts).
+        setEvidenceUrls(prev => [...prev, path]);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Upload failed: ${msg}`);
+      }
+    }
+    setIsUploadingEvidence(false);
+  };
+
+  const removeEvidenceFile = (path: string) => {
+    setEvidenceUrls(prev => prev.filter(p => p !== path));
   };
 
   // Catalog of measurable events, fetched once — populates the sport/
@@ -1355,7 +1380,7 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
   } | null>(null);
 
   const resetForm = () => {
-    setStatValue(''); setCompetitionLevel(''); setEvidenceUrl(null); setEvidenceDescription('');
+    setStatValue(''); setCompetitionLevel(''); setEvidenceUrls([]); setEvidenceDescription('');
     setShowAdd(false); setDuplicateStat(null); setSubmitSuccess(false);
     setCustomSportName(''); setCustomEventName(''); setCustomUnit('');
   };
@@ -1375,7 +1400,7 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
       profile_id:    profileId,
       value:         numericValue,
       event_date:    eventDate,
-      evidence_url:  evidenceUrl,
+      evidence_urls: evidenceUrls,
       evidence_description: evidenceDescription.trim(),
       competition_level: competitionLevel,
     };
@@ -1403,18 +1428,19 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
     // admin step. See processNewStatSubmission for the honest caveats on
     // what this can and can't actually verify from still frames.
     setIsReviewingEvidence(true);
-    const mediaType: 'photo' | 'video' = (evidenceUrl ?? '').match(/\.(mp4|mov|webm|m4v)(\?|$)/i) ? 'video' : 'photo';
-    // evidenceUrl now holds a bare storage path (see handleEvidenceUpload) —
-    // resolve a short-lived signed URL just for this immediate fetch rather
-    // than persisting one anywhere.
-    const evidenceFetchUrl = (await resolveStatEvidenceUrl(evidenceUrl)) ?? evidenceUrl!;
+    // evidenceUrls holds bare storage paths (see handleEvidenceUpload) —
+    // resolve short-lived signed URLs just for this immediate fetch rather
+    // than persisting any anywhere. A file that fails to resolve is
+    // dropped rather than failing the whole review.
+    const media: EvidenceMedia[] = (await Promise.all(evidenceUrls.map(async path => {
+      const url = await resolveStatEvidenceUrl(path);
+      if (!url) return null;
+      const type: 'photo' | 'video' = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(path) ? 'video' : 'photo';
+      return { url, type };
+    }))).filter((m): m is EvidenceMedia => m !== null);
     const outcome = await processNewStatSubmission({
       statId: (inserted as { id: string }).id,
-      mediaUrl: evidenceFetchUrl,
-      mediaType,
-      description: evidenceDescription.trim(),
-      sport, eventLabel, unit, value: numericValue,
-      competitionLevel,
+      media,
     });
     setIsReviewingEvidence(false);
 
@@ -1432,7 +1458,7 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
     if (isSaving) return;
     const numericValue = Number(statValue);
     if (!statValue.trim() || Number.isNaN(numericValue)) { setError('Please enter a valid number.'); return; }
-    if (!evidenceUrl) { setError('Photo or video evidence is required before submitting a stat.'); return; }
+    if (evidenceUrls.length === 0) { setError('At least one photo or video of evidence is required before submitting a stat.'); return; }
     const isCustom = isCustomEvent || isOtherSport;
     if (isCustom) {
       if (!customEventName.trim()) { setError('Please enter the event or stat name.'); return; }
@@ -1681,22 +1707,42 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
           </div>
 
           <div className="flex gap-2 flex-wrap items-start">
-            {/* Evidence upload — required before submission */}
+            {/* Evidence upload — at least one file required before submission */}
             <div className="flex-1 min-w-[200px]">
               <label className="block text-xs text-sr-text-muted mb-1.5">
-                Evidence <span className="text-red-400">*</span> <span className="text-sr-text-muted font-normal">(photo or video, up to 4GB)</span>
+                Evidence <span className="text-red-400">*</span> <span className="text-sr-text-muted font-normal">(photo or video, up to 4GB each, up to {MAX_EVIDENCE_FILES} files)</span>
               </label>
+              {evidenceUrls.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {evidenceUrls.map(path => {
+                    const isVideoFile = /\.(mp4|mov|webm|m4v)$/i.test(path);
+                    return (
+                      <span key={path}
+                        className="flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg text-xs border border-green-500/40 bg-green-500/10 text-green-400">
+                        {isVideoFile ? <Play className="h-3 w-3" /> : <Camera className="h-3 w-3" />}
+                        {isVideoFile ? 'Clip' : 'Photo'}
+                        <button type="button" onClick={() => removeEvidenceFile(path)}
+                          className="p-0.5 rounded hover:bg-green-500/20" title="Remove">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
               <button type="button" onClick={() => evidenceFileRef.current?.click()}
-                disabled={isUploadingEvidence}
+                disabled={isUploadingEvidence || evidenceUrls.length >= MAX_EVIDENCE_FILES}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border transition-colors disabled:opacity-50 ${
-                  evidenceUrl
-                    ? 'border-green-500/40 bg-green-500/10 text-green-400'
+                  evidenceUrls.length > 0
+                    ? 'border-sr-border text-sr-text-muted hover:border-sr-purple/50'
                     : 'border-dashed border-sr-border text-sr-text-muted hover:border-sr-purple/50'
                 }`}>
                 {isUploadingEvidence
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading... {evidenceUploadPercent}%</>
-                  : evidenceUrl
-                  ? <><Check className="h-4 w-4" /> Evidence attached</>
+                  : evidenceUrls.length >= MAX_EVIDENCE_FILES
+                  ? <><Check className="h-4 w-4" /> {MAX_EVIDENCE_FILES} files attached</>
+                  : evidenceUrls.length > 0
+                  ? <><Upload className="h-4 w-4" /> Add another</>
                   : <><Upload className="h-4 w-4" /> Upload evidence</>}
               </button>
               {isUploadingEvidence && (
@@ -1707,12 +1753,12 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
                   />
                 </div>
               )}
-              <input ref={evidenceFileRef} type="file" accept="image/*,video/*"
+              <input ref={evidenceFileRef} type="file" accept="image/*,video/*" multiple
                 onChange={handleEvidenceUpload} className="hidden" />
-              {!evidenceUrl && !isUploadingEvidence && (
+              {evidenceUrls.length === 0 && !isUploadingEvidence && (
                 <>
                   <p className="text-xs text-sr-text-muted mt-1 sm:hidden">Required for verification. Large videos upload in the background.</p>
-                  <p className="text-xs text-sr-text-muted mt-1 hidden sm:block">Required — proof is needed for admin verification. Large videos upload in the background and will resume automatically if your connection drops.</p>
+                  <p className="text-xs text-sr-text-muted mt-1 hidden sm:block">Required — proof is needed for admin verification. Large videos upload in the background and will resume automatically if your connection drops. Select multiple photos/clips at once, or add more one at a time.</p>
                 </>
               )}
             </div>
@@ -1720,7 +1766,7 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
           <div className="flex gap-2">
             <Button variant="brand" size="sm" onClick={handleAdd}
               disabled={
-                !statValue.trim() || !evidenceUrl || !competitionLevel || !evidenceDescription.trim() || isSaving ||
+                !statValue.trim() || evidenceUrls.length === 0 || !competitionLevel || !evidenceDescription.trim() || isSaving ||
                 (!isCustomEvent && !isOtherSport && eventsForSport.length === 0) ||
                 ((isCustomEvent || isOtherSport) && (!customEventName.trim() || !customUnit.trim())) ||
                 (isOtherSport && !customSportName.trim())
@@ -1793,7 +1839,7 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
                   </span>
                 )}
               </div>
-              {s.evidence_url && (
+              {(s.evidence_url || (s.evidence_urls && s.evidence_urls.length > 0)) && (
                 <button
                   onClick={() => setViewingEvidence(s)}
                   className="mt-2 text-[11px] text-sr-purple-light hover:text-white flex items-center gap-1"
@@ -1942,15 +1988,24 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
               </button>
             </div>
 
-            <div className="bg-black flex items-center justify-center max-h-[50vh]">
-              {viewingEvidenceUrl ? (
-                /^.*\.(mp4|mov|webm|m4v)(\?|$)/i.test(viewingEvidenceUrl) ? (
-                  <video src={viewingEvidenceUrl} controls className="max-h-[50vh] w-full" />
-                ) : (
-                  <img src={viewingEvidenceUrl} alt="" className="max-h-[50vh] w-full object-contain" />
-                )
+            <div className="bg-black max-h-[50vh] overflow-y-auto divide-y divide-white/10">
+              {viewingEvidenceUrls.length === 0 ? (
+                <div className="p-8 text-sr-text-muted text-sm text-center">Loading evidence…</div>
               ) : (
-                <div className="p-8 text-sr-text-muted text-sm">Loading evidence…</div>
+                viewingEvidenceUrls.map((url, i) => (
+                  <div key={url} className="flex flex-col items-center justify-center">
+                    {viewingEvidenceUrls.length > 1 && (
+                      <p className="w-full text-[10px] text-sr-text-muted uppercase tracking-wide px-3 pt-2">
+                        {i + 1} of {viewingEvidenceUrls.length}
+                      </p>
+                    )}
+                    {/^.*\.(mp4|mov|webm|m4v)(\?|$)/i.test(url) ? (
+                      <video src={url} controls className="max-h-[50vh] w-full" />
+                    ) : (
+                      <img src={url} alt="" className="max-h-[50vh] w-full object-contain" />
+                    )}
+                  </div>
+                ))
               )}
             </div>
 

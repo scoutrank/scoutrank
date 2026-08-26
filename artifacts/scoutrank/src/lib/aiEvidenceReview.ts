@@ -6,18 +6,29 @@ export type SubmissionOutcome =
   | { status: 'disputed'; reasoning: string }
   | { status: 'error'; error: string };
 
-interface SubmissionInput {
-  statId: string;
-  mediaUrl: string;
-  mediaType: 'photo' | 'video';
+export interface EvidenceMedia {
+  url: string;
+  type: 'photo' | 'video';
 }
 
+interface SubmissionInput {
+  statId: string;
+  media: EvidenceMedia[];
+}
+
+// Same per-video frame count as the original single-file version (2) —
+// unchanged so existing review behavior for a single video doesn't shift.
+// With evidence now capped at MAX_EVIDENCE_FILES per stat (see
+// AthleteProfilePage.tsx), the worst case — every file a video — still
+// keeps total frames sent to Claude vision in a reasonable range.
+const FRAMES_PER_VIDEO = 2;
+
 /**
- * Runs right after a stat + evidence is submitted. Frame extraction (for
- * video) happens here in the browser, since that genuinely requires
- * browser APIs — but the actual AI review and the privileged database
- * writes (marking a stat verified/rejected, writing scores) happen
- * server-side in the review-stat-evidence Edge Function.
+ * Runs right after a stat + one or more evidence files are submitted.
+ * Frame extraction (for video) happens here in the browser, since that
+ * genuinely requires browser APIs — but the actual AI review and the
+ * privileged database writes (marking a stat verified/rejected, writing
+ * scores) happen server-side in the review-stat-evidence Edge Function.
  *
  * This is what closes the loophole the first, fully-client-side version
  * had: the browser can ask for a review, but it can no longer fake the
@@ -29,16 +40,17 @@ interface SubmissionInput {
 export async function processNewStatSubmission(input: SubmissionInput): Promise<SubmissionOutcome> {
   let frames: string[];
   try {
-    frames = input.mediaType === 'photo'
-      ? [await fetchAndDownsizePhoto(input.mediaUrl)]
-      : await fetchAndExtractFrames(input.mediaUrl);
+    const perFile = await Promise.all(input.media.map(m =>
+      m.type === 'photo' ? fetchAndDownsizePhoto(m.url) : fetchAndExtractFrames(m.url, FRAMES_PER_VIDEO),
+    ));
+    frames = perFile.flat();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { status: 'error', error: `Could not prepare evidence for review: ${msg}` };
   }
 
   const { data, error } = await supabase.functions.invoke('review-stat-evidence', {
-    body: { statId: input.statId, frames },
+    body: { statId: input.statId, frames, fileCount: input.media.length },
   });
 
   if (error) {
@@ -78,8 +90,8 @@ async function fetchAndDownsizePhoto(url: string): Promise<string> {
   return downsizeImage(await res.blob());
 }
 
-async function fetchAndExtractFrames(url: string): Promise<string[]> {
+async function fetchAndExtractFrames(url: string, maxFrames: number): Promise<string[]> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Could not fetch video (${res.status}).`);
-  return extractVideoFrames(await res.blob(), 2);
+  return extractVideoFrames(await res.blob(), maxFrames);
 }

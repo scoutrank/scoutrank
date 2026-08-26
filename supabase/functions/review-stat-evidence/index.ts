@@ -108,10 +108,16 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
 
   try {
-    const { statId, frames } = await req.json() as { statId: string; frames: string[] };
+    const { statId, frames, fileCount } = await req.json() as { statId: string; frames: string[]; fileCount?: number };
     if (!statId || !Array.isArray(frames) || frames.length === 0) {
       return json({ error: 'Missing statId or frames (image data URLs, extracted client-side).' }, 400);
     }
+    // A submission can carry several separate photos/clips now, not just
+    // one — fileCount (defaulting to 1 for older clients) tells the model
+    // that, so it doesn't misread ordinary variation between two unrelated
+    // files (different moment, angle, or even outfit change) as a
+    // continuity red flag the way it reasonably would within one video.
+    const evidenceFileCount = typeof fileCount === 'number' && fileCount > 0 ? fileCount : 1;
 
     // Identify the caller from their forwarded auth token — never trust a
     // client-supplied profile id.
@@ -150,7 +156,7 @@ Claimed stat: ${stat.value} ${unit} (${eventLabel}, ${sport})
 Competition level claimed: ${stat.competition_level ?? 'not specified'}
 Athlete's own description of the footage: "${stat.evidence_description ?? ''}"
 
-You have been given ${frames.length} image(s) as evidence (for video submissions these are frames sampled across the footage — not the full footage).
+You have been given ${frames.length} image(s) as evidence, drawn from ${evidenceFileCount} separate submitted file(s) (for video files these are frames sampled across that video's footage — not the full footage).${evidenceFileCount > 1 ? ' Frames belong to whichever file they were sampled from, in the order the files were submitted, but you are not told exactly where one file\'s frames end and the next begin — reason about the whole set together. Ordinary differences between separate files (a different moment, angle, or even a minor appearance change like removed headgear) are normal and NOT by themselves a red flag; only treat something as suspicious if it looks like genuinely different/unrelated content, not just a different clip of the same claim.' : ''}
 
 WHAT TO ACTUALLY CHECK:
 1. Does this look like genuine, relevant sports footage/photo for the claimed sport — not unrelated, fabricated, or reused?

@@ -4,7 +4,7 @@ import { supabase, fullName } from '@/lib/supabase';
 import type { Profile, AthleteStat, StatEventType } from '@/lib/supabase';
 import { Select } from '@/components/ui/Select';
 import { scoreVerifiedStat } from '@/lib/aiScoring';
-import { resolveStatEvidenceUrl } from '@/lib/statEvidence';
+import { statEvidencePaths, resolveStatEvidenceUrls } from '@/lib/statEvidence';
 import { Button } from '@/components/ui/BrandButton';
 import { formatSportName } from '@/utils/format';
 import { AdminTopNav } from '@/components/layout/AdminTopNav';
@@ -60,18 +60,19 @@ export default function AdminPendingStatsPage() {
     id: string; athleteName: string; status: 'pending' | 'success' | 'error';
     score?: number; reasoning?: string; error?: string; startedAt: number;
   }[]>([]);
-  // Signed URL for whichever row's evidence is currently expanded — only
+  // Signed URLs for whichever row's evidence is currently expanded — only
   // one row is expanded at a time, so a single piece of state is enough
-  // (see src/lib/statEvidence.ts for why a resolution step is needed at all).
-  const [expandedEvidenceUrl, setExpandedEvidenceUrl] = useState<string | null>(null);
+  // (see src/lib/statEvidence.ts for why a resolution step is needed at
+  // all, and why a stat can have more than one evidence file).
+  const [expandedEvidenceUrls, setExpandedEvidenceUrls] = useState<string[]>([]);
 
   useEffect(() => {
     const stat = rows.find(r => r.stat.id === expandedId)?.stat;
-    if (!stat?.evidence_url) { setExpandedEvidenceUrl(null); return; }
+    if (!stat) { setExpandedEvidenceUrls([]); return; }
     let cancelled = false;
-    setExpandedEvidenceUrl(null);
-    resolveStatEvidenceUrl(stat.evidence_url).then(url => {
-      if (!cancelled) setExpandedEvidenceUrl(url);
+    setExpandedEvidenceUrls([]);
+    resolveStatEvidenceUrls(stat.evidence_url, stat.evidence_urls).then(urls => {
+      if (!cancelled) setExpandedEvidenceUrls(urls);
     });
     return () => { cancelled = true; };
   }, [expandedId, rows]);
@@ -316,7 +317,8 @@ export default function AdminPendingStatsPage() {
               r.stat.custom_sport === stat.custom_sport &&
               r.stat.custom_event_name?.toLowerCase() === stat.custom_event_name?.toLowerCase()
             ).length;
-            const evidenceIsVideo = isVideo(stat.evidence_url);
+            const evidencePaths = statEvidencePaths(stat.evidence_url, stat.evidence_urls);
+            const evidenceHasVideo = evidencePaths.some(p => isVideo(p));
 
             return (
               <div key={stat.id} className="card-premium overflow-hidden">
@@ -345,10 +347,10 @@ export default function AdminPendingStatsPage() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-400/10 text-yellow-400 border border-yellow-400/20">Pending</span>
-                    {stat.evidence_url && (
+                    {evidencePaths.length > 0 && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-sr-surface border border-sr-border text-sr-text-muted flex items-center gap-0.5">
-                        {evidenceIsVideo ? <Play className="h-2.5 w-2.5" /> : <ImageIcon className="h-2.5 w-2.5" />}
-                        {evidenceIsVideo ? 'Video' : 'Photo'}
+                        {evidenceHasVideo ? <Play className="h-2.5 w-2.5" /> : <ImageIcon className="h-2.5 w-2.5" />}
+                        {evidencePaths.length > 1 ? `${evidencePaths.length} files` : (evidenceHasVideo ? 'Video' : 'Photo')}
                       </span>
                     )}
                     {expandedId === stat.id ? <ChevronUp className="h-4 w-4 text-sr-text-muted" /> : <ChevronDown className="h-4 w-4 text-sr-text-muted" />}
@@ -377,22 +379,29 @@ export default function AdminPendingStatsPage() {
                       ))}
                     </div>
 
-                    {/* Evidence — inline preview */}
-                    {stat.evidence_url ? (
-                      expandedEvidenceUrl ? (
-                        <div className="space-y-2">
-                          {evidenceIsVideo ? (
-                            <video src={expandedEvidenceUrl} controls className="w-full max-h-64 rounded-lg bg-black object-contain"
-                              preload="metadata">
-                              Your browser does not support inline video.
-                            </video>
-                          ) : (
-                            <img src={expandedEvidenceUrl} alt="Evidence" className="w-full max-h-64 object-contain rounded-lg bg-sr-surface border border-sr-border" />
-                          )}
-                          <a href={expandedEvidenceUrl} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs text-sr-purple-light hover:underline">
-                            <ExternalLink className="h-3 w-3" /> Open full evidence in new tab
-                          </a>
+                    {/* Evidence — inline preview, every file the athlete attached */}
+                    {evidencePaths.length > 0 ? (
+                      expandedEvidenceUrls.length > 0 ? (
+                        <div className="space-y-3">
+                          {expandedEvidenceUrls.map((url, i) => (
+                            <div key={url} className="space-y-1">
+                              {expandedEvidenceUrls.length > 1 && (
+                                <p className="text-[10px] text-sr-text-muted uppercase tracking-wide">Evidence {i + 1} of {expandedEvidenceUrls.length}</p>
+                              )}
+                              {isVideo(url) ? (
+                                <video src={url} controls className="w-full max-h-64 rounded-lg bg-black object-contain"
+                                  preload="metadata">
+                                  Your browser does not support inline video.
+                                </video>
+                              ) : (
+                                <img src={url} alt="Evidence" className="w-full max-h-64 object-contain rounded-lg bg-sr-surface border border-sr-border" />
+                              )}
+                              <a href={url} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs text-sr-purple-light hover:underline">
+                                <ExternalLink className="h-3 w-3" /> Open full evidence in new tab
+                              </a>
+                            </div>
+                          ))}
                         </div>
                       ) : (
                         <p className="text-xs text-sr-text-muted">Loading evidence…</p>

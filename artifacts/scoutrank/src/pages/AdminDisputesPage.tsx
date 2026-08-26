@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import { scoreVerifiedStat } from '@/lib/aiScoring';
-import { resolveStatEvidenceUrl } from '@/lib/statEvidence';
+import { statEvidencePaths, resolveStatEvidenceUrl } from '@/lib/statEvidence';
 import { timeAgo } from '@/utils/time';
 import { Gavel, Loader2, AlertCircle, Check, X, ExternalLink, ShieldOff } from 'lucide-react';
 import { AdminTopNav } from '@/components/layout/AdminTopNav';
@@ -20,6 +20,7 @@ interface DisputeRow {
     value: number;
     competition_level: string | null;
     evidence_url: string | null;
+    evidence_urls: string[] | null;
     evidence_description: string | null;
     custom_sport: string | null;
     custom_event_name: string | null;
@@ -84,7 +85,7 @@ export default function AdminDisputesPage() {
         .from('stat_disputes')
         .select(`
           id, stat_id, profile_id, ai_reasoning, status, resolution, created_at,
-          athlete_stats:stat_id(value, competition_level, evidence_url, evidence_description, custom_sport, custom_event_name, custom_unit, stat_event_types(sport, label, unit)),
+          athlete_stats:stat_id(value, competition_level, evidence_url, evidence_urls, evidence_description, custom_sport, custom_event_name, custom_unit, stat_event_types(sport, label, unit)),
           profiles:profile_id(username, first_name, last_name)
         `)
         .order('created_at', { ascending: false })
@@ -289,11 +290,15 @@ export default function AdminDisputesPage() {
                     </div>
                   )}
 
-                  {stat?.evidence_url && (
-                    <button onClick={() => openStatEvidence(stat.evidence_url!)}
-                      className="inline-flex items-center gap-1.5 text-xs text-sr-purple-light hover:text-white transition-colors">
-                      View evidence <ExternalLink className="h-3 w-3" />
-                    </button>
+                  {statEvidencePaths(stat?.evidence_url, stat?.evidence_urls).length > 0 && (
+                    <div className="flex flex-wrap gap-3">
+                      {statEvidencePaths(stat?.evidence_url, stat?.evidence_urls).map((path, i, all) => (
+                        <button key={path} onClick={() => openStatEvidence(path)}
+                          className="inline-flex items-center gap-1.5 text-xs text-sr-purple-light hover:text-white transition-colors">
+                          View evidence{all.length > 1 ? ` ${i + 1}` : ''} <ExternalLink className="h-3 w-3" />
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               );

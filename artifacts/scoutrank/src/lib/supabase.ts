@@ -484,7 +484,8 @@ export interface AthleteStat {
   event_date: string;
   age_group: string | null;
   verification_status: 'pending' | 'verified' | 'rejected' | 'disputed';
-  evidence_url: string | null;
+  evidence_url: string | null;         // legacy single-file column — kept for rows submitted before multi-file evidence shipped
+  evidence_urls: string[] | null;      // current column — one or more storage paths; see src/lib/statEvidence.ts
   rejection_reason: string | null;     // set by admin on reject; shown to athlete
   created_at: string;
   // Custom event metadata — populated when stat_event_type_id is null
