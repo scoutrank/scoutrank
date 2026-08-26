@@ -1774,7 +1774,7 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
               icon={isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined}>
               {isSaving ? 'Submitting...' : 'Submit for Review'}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => { setShowAdd(false); setError(''); setEvidenceUrl(null); setCustomSportName(''); setCustomEventName(''); setCustomUnit(''); }}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={() => { setShowAdd(false); setError(''); setEvidenceUrls([]); setCustomSportName(''); setCustomEventName(''); setCustomUnit(''); }}>Cancel</Button>
           </div>
         </div>
       )}
