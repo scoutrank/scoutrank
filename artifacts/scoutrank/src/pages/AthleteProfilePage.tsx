@@ -4,8 +4,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName, displayScoutRank, displayRole } from '@/lib/supabase';
 import { BookmarkIcon, CheckmarkIcon, TrendUpIcon, TrendDownIcon } from '@/components/icons';
 import { TrustBadge } from '@/components/ui/TrustBadge';
-import { uploadMediaBlob, uploadResumable, publicUrlFor, MAX_UPLOAD_BYTES } from '@/lib/mediaStorage';
+import { uploadMediaBlob, uploadResumable, MAX_UPLOAD_BYTES } from '@/lib/mediaStorage';
 import { processNewStatSubmission } from '@/lib/aiEvidenceReview';
+import { statEvidencePath, resolveStatEvidenceUrl } from '@/lib/statEvidence';
 import { triggerPostModeration } from '@/lib/postModeration';
 import { Button } from '@/components/ui/BrandButton';
 import { Select } from '@/components/ui/Select';
@@ -1170,6 +1171,7 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<(AthleteStat & { stat_event_types: StatEventType | null }) | null>(null);
   const [viewingEvidence, setViewingEvidence] = useState<(AthleteStat & { stat_event_types: StatEventType | null }) | null>(null);
+  const [viewingEvidenceUrl, setViewingEvidenceUrl] = useState<string | null>(null);
   const [reportingEvidence, setReportingEvidence] = useState(false);
   const [reportReason, setReportReason] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
@@ -1179,6 +1181,19 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
 
   const isCustomEvent = selectedEventTypeId === '__custom__';
   const isOtherSport  = selectedSport === 'other';
+
+  // Resolve a fresh signed URL whenever a different stat's evidence is
+  // opened in the viewer — evidence_url may be a legacy public URL or a
+  // bare storage path (see src/lib/statEvidence.ts).
+  useEffect(() => {
+    if (!viewingEvidence?.evidence_url) { setViewingEvidenceUrl(null); return; }
+    let cancelled = false;
+    setViewingEvidenceUrl(null);
+    resolveStatEvidenceUrl(viewingEvidence.evidence_url).then(url => {
+      if (!cancelled) setViewingEvidenceUrl(url);
+    });
+    return () => { cancelled = true; };
+  }, [viewingEvidence]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -1208,11 +1223,9 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
     // Clean up storage evidence if present.
     if (stat.evidence_url) {
       try {
-        // Extract the path after '/stat-evidence/' in the public URL.
-        const marker = '/stat-evidence/';
-        const idx = stat.evidence_url.indexOf(marker);
-        if (idx !== -1) {
-          const storagePath = stat.evidence_url.slice(idx + marker.length);
+        // Handles both legacy full-URL rows and new bare-path rows.
+        const storagePath = statEvidencePath(stat.evidence_url);
+        if (storagePath) {
           await supabase.storage.from('stat-evidence').remove([storagePath]);
         }
       } catch {
@@ -1258,7 +1271,11 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
         contentType: fileToUpload.type,
         onProgress: p => setEvidenceUploadPercent(p.percent),
       });
-      setEvidenceUrl(publicUrlFor('stat-evidence', path));
+      // Store just the bare storage path, not a permanent public URL — the
+      // stat-evidence bucket is being flipped to private, so every render
+      // site resolves a fresh signed URL on demand instead (see
+      // src/lib/statEvidence.ts).
+      setEvidenceUrl(path);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Upload failed: ${msg}`);
@@ -1387,9 +1404,13 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
     // what this can and can't actually verify from still frames.
     setIsReviewingEvidence(true);
     const mediaType: 'photo' | 'video' = (evidenceUrl ?? '').match(/\.(mp4|mov|webm|m4v)(\?|$)/i) ? 'video' : 'photo';
+    // evidenceUrl now holds a bare storage path (see handleEvidenceUpload) —
+    // resolve a short-lived signed URL just for this immediate fetch rather
+    // than persisting one anywhere.
+    const evidenceFetchUrl = (await resolveStatEvidenceUrl(evidenceUrl)) ?? evidenceUrl!;
     const outcome = await processNewStatSubmission({
       statId: (inserted as { id: string }).id,
-      mediaUrl: evidenceUrl!,
+      mediaUrl: evidenceFetchUrl,
       mediaType,
       description: evidenceDescription.trim(),
       sport, eventLabel, unit, value: numericValue,
@@ -1922,10 +1943,14 @@ function StatsTab({ isOwner, profileId, ownerRole }: { isOwner: boolean; profile
             </div>
 
             <div className="bg-black flex items-center justify-center max-h-[50vh]">
-              {/^.*\.(mp4|mov|webm|m4v)(\?|$)/i.test(viewingEvidence.evidence_url ?? '') ? (
-                <video src={viewingEvidence.evidence_url ?? ''} controls className="max-h-[50vh] w-full" />
+              {viewingEvidenceUrl ? (
+                /^.*\.(mp4|mov|webm|m4v)(\?|$)/i.test(viewingEvidenceUrl) ? (
+                  <video src={viewingEvidenceUrl} controls className="max-h-[50vh] w-full" />
+                ) : (
+                  <img src={viewingEvidenceUrl} alt="" className="max-h-[50vh] w-full object-contain" />
+                )
               ) : (
-                <img src={viewingEvidence.evidence_url ?? ''} alt="" className="max-h-[50vh] w-full object-contain" />
+                <div className="p-8 text-sr-text-muted text-sm">Loading evidence…</div>
               )}
             </div>
 

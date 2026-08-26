@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import type { Profile, AthleteStat, StatEventType } from '@/lib/supabase';
 import { Select } from '@/components/ui/Select';
 import { scoreVerifiedStat } from '@/lib/aiScoring';
+import { resolveStatEvidenceUrl } from '@/lib/statEvidence';
 import { Button } from '@/components/ui/BrandButton';
 import { formatSportName } from '@/utils/format';
+import { AdminTopNav } from '@/components/layout/AdminTopNav';
 import {
   BarChart3, Check, X, ExternalLink, Loader2, AlertCircle,
-  ChevronDown, ChevronUp, Sparkles, ImageIcon, Play, ArrowLeft,
+  ChevronDown, ChevronUp, Sparkles, ImageIcon, Play,
 } from 'lucide-react';
 
 interface PendingStatRow {
@@ -59,6 +60,21 @@ export default function AdminPendingStatsPage() {
     id: string; athleteName: string; status: 'pending' | 'success' | 'error';
     score?: number; reasoning?: string; error?: string; startedAt: number;
   }[]>([]);
+  // Signed URL for whichever row's evidence is currently expanded — only
+  // one row is expanded at a time, so a single piece of state is enough
+  // (see src/lib/statEvidence.ts for why a resolution step is needed at all).
+  const [expandedEvidenceUrl, setExpandedEvidenceUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stat = rows.find(r => r.stat.id === expandedId)?.stat;
+    if (!stat?.evidence_url) { setExpandedEvidenceUrl(null); return; }
+    let cancelled = false;
+    setExpandedEvidenceUrl(null);
+    resolveStatEvidenceUrl(stat.evidence_url).then(url => {
+      if (!cancelled) setExpandedEvidenceUrl(url);
+    });
+    return () => { cancelled = true; };
+  }, [expandedId, rows]);
 
   const runAIScoring = (statId: string, athleteName: string) => {
     const logId = `${statId}-${Date.now()}`;
@@ -202,10 +218,9 @@ export default function AdminPendingStatsPage() {
   });
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <Link to="/admin" className="inline-flex items-center gap-1.5 text-xs text-sr-text-muted hover:text-white transition-colors mb-4">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Admin
-      </Link>
+    <div className="min-h-screen bg-sr-bg">
+      <AdminTopNav />
+      <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <BarChart3 className="h-7 w-7 text-sr-purple" />
         <h1 className="text-2xl font-bold text-white">Pending Athlete Stats</h1>
@@ -364,20 +379,24 @@ export default function AdminPendingStatsPage() {
 
                     {/* Evidence — inline preview */}
                     {stat.evidence_url ? (
-                      <div className="space-y-2">
-                        {evidenceIsVideo ? (
-                          <video src={stat.evidence_url} controls className="w-full max-h-64 rounded-lg bg-black object-contain"
-                            preload="metadata">
-                            Your browser does not support inline video.
-                          </video>
-                        ) : (
-                          <img src={stat.evidence_url} alt="Evidence" className="w-full max-h-64 object-contain rounded-lg bg-sr-surface border border-sr-border" />
-                        )}
-                        <a href={stat.evidence_url} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs text-sr-purple-light hover:underline">
-                          <ExternalLink className="h-3 w-3" /> Open full evidence in new tab
-                        </a>
-                      </div>
+                      expandedEvidenceUrl ? (
+                        <div className="space-y-2">
+                          {evidenceIsVideo ? (
+                            <video src={expandedEvidenceUrl} controls className="w-full max-h-64 rounded-lg bg-black object-contain"
+                              preload="metadata">
+                              Your browser does not support inline video.
+                            </video>
+                          ) : (
+                            <img src={expandedEvidenceUrl} alt="Evidence" className="w-full max-h-64 object-contain rounded-lg bg-sr-surface border border-sr-border" />
+                          )}
+                          <a href={expandedEvidenceUrl} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-sr-purple-light hover:underline">
+                            <ExternalLink className="h-3 w-3" /> Open full evidence in new tab
+                          </a>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-sr-text-muted">Loading evidence…</p>
+                      )
                     ) : (
                       <p className="text-xs text-orange-400 flex items-center gap-1.5">
                         <AlertCircle className="h-3.5 w-3.5" /> No evidence uploaded — consider rejecting.
@@ -549,6 +568,7 @@ export default function AdminPendingStatsPage() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

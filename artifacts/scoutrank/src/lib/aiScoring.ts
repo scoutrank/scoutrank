@@ -1,6 +1,43 @@
 import { supabase } from '@/lib/supabase';
-import { groqChat, extractJsonObject } from '@/lib/groq';
+import { extractJsonObject, type ChatMessage } from '@/lib/groq';
 import { calculateAgeFromDob } from '@/utils/time';
+
+/**
+ * Routed through the score-athlete-stat Edge Function rather than calling
+ * Groq directly with VITE_GROQ_API_KEY — that key gets baked as plain
+ * text into the client bundle, readable by anyone via devtools. Same fix
+ * pattern already applied to Scout Bot's chat (see groq.ts's groqStream).
+ * Non-streaming: this call only ever needs the final JSON text, not
+ * incremental tokens, so a single request/response round-trip is enough.
+ */
+async function scoreViaGroqProxy(messages: ChatMessage[], maxTokens = 1000): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token;
+  if (!accessToken) throw new Error('Not signed in — cannot score stat.');
+
+  const { data, error } = await supabase.functions.invoke('score-athlete-stat', {
+    body: { messages, maxTokens },
+  });
+
+  if (error) {
+    // FunctionsHttpError's own .message is a generic "Edge Function
+    // returned a non-2xx status code" — the real reason lives in the
+    // response body on .context. Same fix as aiEvidenceReview.ts.
+    let detail = error.message;
+    try {
+      const context = (error as { context?: Response }).context;
+      if (context) {
+        const body = await context.clone().json().catch(() => null);
+        if (body?.error) detail = body.error;
+      }
+    } catch {
+      // Fall back to the generic message below.
+    }
+    throw new Error(detail);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data?.content ?? '';
+}
 
 export type ScoreResult =
   | { ok: true; score: number; reasoning: string }
@@ -118,7 +155,7 @@ Respond with ONLY strict JSON, nothing else, no markdown fences: {"score": <numb
 
     let raw: string;
     try {
-      raw = await groqChat(
+      raw = await scoreViaGroqProxy(
         [
           { role: 'system', content: 'You are an expert sports scout with deep, specific knowledge of typical performance benchmarks across many sports at every level from recreational to international. You form confident, specific judgments even without database comparison data, drawing on real knowledge of the sport. You output only valid JSON, nothing else — no markdown, no commentary outside the JSON object.' },
           { role: 'user', content: prompt },

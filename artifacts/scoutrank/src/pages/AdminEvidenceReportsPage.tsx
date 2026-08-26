@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import { timeAgo } from '@/utils/time';
 import { applyAccountModeration, issueWarning, endOfDayISOString, type ModerationAction } from '@/lib/accountModeration';
+import { resolveStatEvidenceUrl } from '@/lib/statEvidence';
 import { Loader2, AlertCircle, Flag, Check, X, Play, Trash2, ShieldOff, Ban } from 'lucide-react';
 import { AdminTopNav } from '@/components/layout/AdminTopNav';
 
@@ -34,10 +35,23 @@ export default function AdminEvidenceReportsPage() {
   const [actioning, setActioning] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'open' | 'resolved' | 'all'>('open');
   const [viewing, setViewing] = useState<ReportRow | null>(null);
+  const [viewingUrl, setViewingUrl] = useState<string | null>(null);
   const [takingActionOn, setTakingActionOn] = useState<string | null>(null);
   const [chosenAction, setChosenAction] = useState<ModerationAction | 'warn'>('warn');
   const [actionReason, setActionReason] = useState('');
   const [suspendUntil, setSuspendUntil] = useState('');
+
+  // Resolve a fresh signed URL whenever a different report's evidence is
+  // opened (evidence_url may be a legacy public URL or a bare storage
+  // path — see src/lib/statEvidence.ts).
+  useEffect(() => {
+    const url = viewing?.athlete_stats?.evidence_url;
+    if (!url) { setViewingUrl(null); return; }
+    let cancelled = false;
+    setViewingUrl(null);
+    resolveStatEvidenceUrl(url).then(u => { if (!cancelled) setViewingUrl(u); });
+    return () => { cancelled = true; };
+  }, [viewing]);
 
   const dismiss = async (row: ReportRow) => {
     if (!profile) return;
@@ -82,6 +96,13 @@ export default function AdminEvidenceReportsPage() {
     const { error: rankErr } = await supabase.from('rankings').delete().eq('profile_id', targetUserId);
     if (rankErr) { setActioning(null); setError(`Score reset, but failed to clear rankings: ${rankErr.message}`); return; }
 
+    // account_moderation_log.evidence_url is a separate, permanent record —
+    // it still expects a directly-usable URL, not a bare storage path, so
+    // resolve one here before handing it off. Using a week-long expiry
+    // since this is meant to document the action, not a one-time view;
+    // it'll still eventually go stale like any signed URL, which is a
+    // pre-existing limitation of that log (out of scope to fully fix here).
+    const moderationEvidenceUrl = await resolveStatEvidenceUrl(row.athlete_stats.evidence_url, 60 * 60 * 24 * 7);
     const result = chosenAction === 'warn'
       ? await issueWarning({ performedBy: profile.id, targetUserId, reason: actionReason.trim() })
       : await applyAccountModeration({
@@ -90,7 +111,7 @@ export default function AdminEvidenceReportsPage() {
           action: chosenAction,
           reason: actionReason.trim(),
           until: chosenAction === 'suspend' && suspendUntil ? endOfDayISOString(suspendUntil) : null,
-          evidenceUrl: row.athlete_stats.evidence_url ?? null,
+          evidenceUrl: moderationEvidenceUrl,
         });
     if (!result.ok) { setActioning(null); setError(result.error ?? 'Action failed.'); return; }
 
@@ -250,10 +271,14 @@ export default function AdminEvidenceReportsPage() {
               <button onClick={() => setViewing(null)} className="text-sr-text-muted hover:text-white"><X className="h-4 w-4" /></button>
             </div>
             <div className="bg-black flex items-center justify-center max-h-[60vh]">
-              {/^.*\.(mp4|mov|webm|m4v)(\?|$)/i.test(viewing.athlete_stats.evidence_url) ? (
-                <video src={viewing.athlete_stats.evidence_url} controls className="max-h-[60vh] w-full" />
+              {viewingUrl ? (
+                /^.*\.(mp4|mov|webm|m4v)(\?|$)/i.test(viewingUrl) ? (
+                  <video src={viewingUrl} controls className="max-h-[60vh] w-full" />
+                ) : (
+                  <img src={viewingUrl} alt="" className="max-h-[60vh] w-full object-contain" />
+                )
               ) : (
-                <img src={viewing.athlete_stats.evidence_url} alt="" className="max-h-[60vh] w-full object-contain" />
+                <div className="p-8 text-sr-text-muted text-sm">Loading evidence…</div>
               )}
             </div>
             {viewing.athlete_stats.evidence_description && (

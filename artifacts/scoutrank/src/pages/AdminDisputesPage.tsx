@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, fullName } from '@/lib/supabase';
 import { scoreVerifiedStat } from '@/lib/aiScoring';
+import { resolveStatEvidenceUrl } from '@/lib/statEvidence';
 import { timeAgo } from '@/utils/time';
 import { Gavel, Loader2, AlertCircle, Check, X, ExternalLink, ShieldOff } from 'lucide-react';
 import { AdminTopNav } from '@/components/layout/AdminTopNav';
@@ -66,6 +67,14 @@ export default function AdminDisputesPage() {
   if (!isAdmin) {
     return <div className="flex items-center justify-center py-20 text-sr-text-muted">Admin access required.</div>;
   }
+
+  // Resolves a fresh signed URL on click rather than baking one into a
+  // stored href — signed URLs expire, so one generated at row-render time
+  // could easily be stale by the time an admin actually clicks it.
+  const openStatEvidence = async (evidenceUrl: string) => {
+    const url = await resolveStatEvidenceUrl(evidenceUrl);
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
   const load = async () => {
     setIsLoading(true);
@@ -281,10 +290,10 @@ export default function AdminDisputesPage() {
                   )}
 
                   {stat?.evidence_url && (
-                    <a href={stat.evidence_url} target="_blank" rel="noreferrer"
+                    <button onClick={() => openStatEvidence(stat.evidence_url!)}
                       className="inline-flex items-center gap-1.5 text-xs text-sr-purple-light hover:text-white transition-colors">
                       View evidence <ExternalLink className="h-3 w-3" />
-                    </a>
+                    </button>
                   )}
                 </div>
               );

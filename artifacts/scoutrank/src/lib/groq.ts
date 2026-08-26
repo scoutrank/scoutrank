@@ -1,28 +1,22 @@
-// Groq AI helper — used for Scout Bot, profile overviews, resume generation,
-// and stat plausibility checks.
+// Groq AI helper — used for Scout Bot's chat (and, historically, direct
+// text/vision calls that have since been retired — see below).
 //
-// groqChat/groqVisionChat below still call Groq directly from the browser
-// using VITE_GROQ_API_KEY — that's a Vite env var, which gets baked as a
-// literal string into the built client bundle, so the real API key ships
-// to every visitor and is readable in devtools. groqStream (Scout Bot's
-// chat, the highest-traffic caller) has been moved behind the
-// scout-bot-chat Edge Function so its key stays server-side; the other
-// two still need the same treatment in a follow-up pass.
+// This used to also export groqChat/groqVisionChat, which called Groq
+// directly from the browser using VITE_GROQ_API_KEY — a Vite env var,
+// which gets baked as a literal string into the built client bundle, so
+// the real API key shipped to every visitor and was readable in devtools.
+// groqStream (Scout Bot's chat) was already moved behind the
+// scout-bot-chat Edge Function; aiScoring.ts's direct groqChat() call was
+// the last live caller and has now moved behind its own
+// score-athlete-stat Edge Function (see aiScoring.ts). With no callers
+// left, groqChat/groqVisionChat and the VITE_GROQ_API_KEY constant they
+// used have been removed outright rather than left as unused-but-still
+// key-exposing dead code — the key literal would otherwise still ship in
+// the bundle even with nothing calling the functions that used it.
+// groqVisionChat's evidence-review use case now runs server-side too, via
+// review-stat-evidence's Claude-based review.
 
 import { supabase, supabaseUrl, supabaseAnonKey } from '@/lib/supabase';
-
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY ?? '';
-const GROQ_BASE = 'https://api.groq.com/openai/v1';
-// llama-3.3-70b-versatile is being deprecated by Groq — openai/gpt-oss-120b
-// is their current recommended replacement for general text tasks.
-const GROQ_MODEL = 'openai/gpt-oss-120b';
-// Vision-capable model, for anything that needs to actually look at an
-// image (e.g. evidence review). Groq's multimodal lineup changes
-// fairly often — this is their current recommendation as of mid-2026,
-// marked by Groq itself as a preview model rather than fully stable.
-// If evidence review calls start failing with a "model not found"-style
-// error, check console.groq.com/docs/vision for the current name.
-const GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -39,63 +33,6 @@ export function extractJsonObject(raw: string): string {
   const withoutFences = withoutThinking.replace(/```json|```/g, '');
   const match = withoutFences.match(/\{[\s\S]*\}/);
   return (match ? match[0] : withoutFences).trim();
-}
-
-// A multimodal message content part — either plain text, or an image
-// (as a data: URL or a public https URL Groq can fetch).
-export type VisionContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } };
-export type VisionMessage = { role: 'system' | 'user' | 'assistant'; content: string | VisionContentPart[] };
-
-/**
- * Same as groqChat but using the vision-capable model and allowing image
- * content parts in messages — for anything that needs to actually look
- * at a photo/video frame rather than just read text.
- */
-export async function groqVisionChat(messages: VisionMessage[], maxTokens = 1024): Promise<string> {
-  const res = await fetch(`${GROQ_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: GROQ_VISION_MODEL,
-      messages,
-      max_tokens: maxTokens,
-      stream: false,
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Groq vision error ${res.status}: ${text}`);
-  }
-  const data = await res.json();
-  return (data.choices[0]?.message?.content as string) ?? '';
-}
-
-/** Non-streaming: returns the full assistant response text. */
-export async function groqChat(messages: ChatMessage[], maxTokens = 1024): Promise<string> {
-  const res = await fetch(`${GROQ_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages,
-      max_tokens: maxTokens,
-      stream: false,
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Groq error ${res.status}: ${text}`);
-  }
-  const data = await res.json();
-  return (data.choices[0]?.message?.content as string) ?? '';
 }
 
 /**
