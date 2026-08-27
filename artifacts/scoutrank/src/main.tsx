@@ -16,6 +16,25 @@ Sentry.init({
   tracesSampleRate: 0,
 });
 
+// Vite code-splits routes into separate JS files named with a content
+// hash. Every time we ship a new deploy, old file names stop existing on
+// the server — so a tab that's been open since before the deploy can hit
+// a real "failed to fetch dynamically imported module" error the moment
+// someone navigates to a page that tab hasn't loaded yet (this is exactly
+// what Sentry caught after today's run of deploys — see the LoginPage
+// TypeError). The fix isn't to stop deploying, it's to recover
+// automatically: a fresh page load always picks up the current file
+// list, so a single reload fixes it. Guarded with a session flag so a
+// genuine, unrelated network outage can't cause a reload loop.
+window.addEventListener('vite:preloadError', () => {
+  const key = 'scoutrank_preload_reload_at';
+  const last = Number(sessionStorage.getItem(key) || 0);
+  if (Date.now() - last > 60_000) {
+    sessionStorage.setItem(key, String(Date.now()));
+    window.location.reload();
+  }
+});
+
 const rootEl = document.getElementById('root');
 if (!rootEl) throw new Error('Root element not found');
 createRoot(rootEl).render(
