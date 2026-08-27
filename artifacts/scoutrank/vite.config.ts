@@ -43,6 +43,13 @@ export default defineConfig({
       output: {
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return undefined;
+          // Must come before the react-dom/react check below: Sentry's
+          // package path is node_modules/@sentry/react/..., which contains
+          // the substring "/react/" and was silently matching the react
+          // rule — that's why vendor-react grew from 708KB to 798KB the
+          // moment Sentry was added, even though Sentry itself isn't React.
+          // Giving it its own chunk here undoes that accidental bundling.
+          if (id.includes('@sentry')) return 'vendor-sentry';
           if (id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler')) return 'vendor-react';
           if (id.includes('react-router')) return 'vendor-router';
           if (id.includes('framer-motion')) return 'vendor-motion';
