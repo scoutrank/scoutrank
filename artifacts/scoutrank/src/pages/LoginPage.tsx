@@ -20,7 +20,8 @@ export default function LoginPage() {
   const { login, isLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [email, setEmail] = useState('');
+  // Holds either an email or a username now — see AuthContext.login.
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -28,9 +29,9 @@ export default function LoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
-    if (!email || !password) { setError('Please fill in all fields'); return; }
+    if (!identifier || !password) { setError('Please fill in all fields'); return; }
     try {
-      await login(email, password);
+      await login(identifier, password);
       // A suspended/banned account logs in successfully like anyone else
       // — App-level routing (see App.tsx) redirects them to the dedicated
       // /account-restricted page instead of blocking the login itself.
@@ -81,15 +82,17 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-sr-silver mb-1.5">Email</label>
+              <label className="block text-sm font-medium text-sr-silver mb-1.5">Email or Username</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sr-text-muted" />
                 <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  type="text"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  value={identifier}
+                  onChange={e => setIdentifier(e.target.value)}
                   className="input-dark pl-10"
-                  placeholder="alex@email.com"
+                  placeholder="alex@email.com or alexj"
                 />
               </div>
             </div>

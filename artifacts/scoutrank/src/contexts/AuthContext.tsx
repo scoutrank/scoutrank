@@ -20,7 +20,9 @@ interface AuthState {
 interface AuthContextType extends AuthState {
   isAdmin: boolean;
   isSuperAdmin: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  // "identifier" rather than "email" — accepts either an email or a
+  // username now (see the implementation below).
+  login: (identifier: string, password: string) => Promise<void>;
   signup: (data: SignupData) => Promise<{ needsEmailConfirmation: boolean }>;
   logout: () => Promise<void>;
   logoutAllDevices: () => Promise<void>;
@@ -185,12 +187,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.user?.id, applySession]);
 
   // ── Login ──
-  const login = useCallback(async (email: string, password: string) => {
+  // Accepts either an email or a username. The email path is unchanged —
+  // straight through signInWithPassword, no extra network hop. A username
+  // (anything without an "@") goes through the login-with-identifier edge
+  // function instead, since resolving username -> email requires reading
+  // auth.users (service-role only, can't happen on the client) — see that
+  // function for why this isn't just a plain client-side lookup.
+  const login = useCallback(async (identifier: string, password: string) => {
     setState(s => ({ ...s, isLoading: true }));
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
+
+    if (identifier.includes('@')) {
+      const { error } = await supabase.auth.signInWithPassword({ email: identifier, password });
+      if (error) {
+        setState(s => ({ ...s, isLoading: false }));
+        throw error;
+      }
+      // onAuthStateChange fires and populates user/profile/role.
+      return;
+    }
+
+    const { data, error: fnError } = await supabase.functions.invoke('login-with-identifier', {
+      body: { identifier, password },
+    });
+    if (fnError || data?.error) {
       setState(s => ({ ...s, isLoading: false }));
-      throw error;
+      throw new Error(data?.error || fnError?.message || 'Invalid login credentials');
+    }
+    const { access_token, refresh_token } = data.session ?? {};
+    if (!access_token || !refresh_token) {
+      setState(s => ({ ...s, isLoading: false }));
+      throw new Error('Invalid login credentials');
+    }
+    const { error: setSessionError } = await supabase.auth.setSession({ access_token, refresh_token });
+    if (setSessionError) {
+      setState(s => ({ ...s, isLoading: false }));
+      throw setSessionError;
     }
     // onAuthStateChange fires and populates user/profile/role.
   }, []);

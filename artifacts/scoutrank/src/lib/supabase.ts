@@ -210,6 +210,20 @@ export function displayRole(p: Pick<Profile, 'role' | 'owned_organisation_id'> |
   return p.role ? p.role.charAt(0).toUpperCase() + p.role.slice(1) : 'Athlete';
 }
 
+// Kept in its own table (not a column on `profiles`) on purpose — the vast
+// majority of profile fields are readable by anyone via the normal
+// `profiles(*)` joins used all over the app (Feed, Explore, Rankings, etc.),
+// and Postgres RLS can only restrict which *rows* a query sees, not which
+// *columns*. Putting a phone number as a plain column on `profiles` would
+// mean it rides along in every one of those public reads. A separate table
+// with an owner-only RLS policy (see the SQL) means it's never fetched
+// unless the signed-in user is asking for their own number.
+export interface ProfileContactInfo {
+  profile_id: string;
+  phone_number: string | null;
+  updated_at: string;
+}
+
 export interface AthleteDetail {
   profile_id: string;
   primary_sport: string;

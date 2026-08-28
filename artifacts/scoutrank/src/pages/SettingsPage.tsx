@@ -7,7 +7,7 @@ import { SPORT_OPTIONS } from '@/lib/sports';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/supabase';
 import { exportMyData } from '@/lib/dataExport';
-import { Settings, User, Shield, Bell, Lock, Palette, LogOut, Check, AlertCircle, Loader2, Camera, Image, Watch, RefreshCw, Unlink } from 'lucide-react';
+import { Settings, User, Shield, Bell, Lock, Palette, LogOut, Check, AlertCircle, Loader2, Camera, Image, Watch, RefreshCw, Unlink, Phone } from 'lucide-react';
 import { LocationPicker } from '@/components/LocationPicker';
 
 type SettingTab = 'profile' | 'privacy' | 'notifications' | 'appearance' | 'security' | 'wearables';
@@ -130,6 +130,29 @@ function ProfileTab({ profile, refreshProfile }: { profile: any; refreshProfile:
   const [academicInfo, setAcademicInfo] = useState(profile?.academic_info ?? '');
   const [injuryHistory, setInjuryHistory] = useState(profile?.injury_history ?? '');
   const [dnaSelfReported, setDnaSelfReported] = useState<Record<string, number>>(profile?.dna_self_reported ?? {});
+  // Lives in its own table (profile_contact_info), not on `profile` itself
+  // — see the comment on ProfileContactInfo in lib/supabase.ts for why.
+  // That means it isn't part of the `profile` object AuthContext already
+  // loaded, so it needs its own fetch here rather than reading profile?.phone_number.
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneLoaded, setPhoneLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
+    supabase
+      .from('profile_contact_info')
+      .select('phone_number')
+      .eq('profile_id', profile.id)
+      .maybeSingle()
+      .then(({ data, error: fetchErr }) => {
+        if (cancelled) return;
+        if (fetchErr) console.error('Failed to load phone number:', fetchErr.message);
+        setPhoneNumber((data as { phone_number: string | null } | null)?.phone_number ?? '');
+        setPhoneLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [profile?.id]);
 
   const uploadPhoto = async (
     file: File,
@@ -185,6 +208,20 @@ function ProfileTab({ profile, refreshProfile }: { profile: any; refreshProfile:
 
     if (updateError) {
       setError(updateError.message);
+      setSaving(false);
+      return;
+    }
+
+    // Separate table/request on purpose — see the note on the phoneNumber
+    // state above. RLS on profile_contact_info only allows a user to
+    // upsert their own row, so this is safe even though it's a distinct
+    // write from the profiles update above.
+    const { error: phoneError } = await supabase
+      .from('profile_contact_info')
+      .upsert({ profile_id: profile.id, phone_number: phoneNumber.trim() || null, updated_at: new Date().toISOString() });
+    if (phoneError) {
+      console.error('Failed to save phone number:', phoneError.message);
+      setError(`Profile saved, but your phone number couldn't be saved: ${phoneError.message}`);
       setSaving(false);
       return;
     }
@@ -279,6 +316,17 @@ function ProfileTab({ profile, refreshProfile }: { profile: any; refreshProfile:
         <input className="input-dark opacity-60 cursor-not-allowed" value={profile?.username ?? ''} readOnly
           title="Username cannot be changed" />
         <p className="text-xs text-sr-text-muted mt-1">Username cannot be changed.</p>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-sr-silver mb-1.5">Phone Number</label>
+        <div className="relative">
+          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sr-text-muted" />
+          <input type="tel" className="input-dark pl-10" value={phoneNumber}
+            onChange={e => setPhoneNumber(e.target.value)}
+            disabled={!phoneLoaded}
+            placeholder="e.g. 0412 345 678" />
+        </div>
+        <p className="text-xs text-sr-text-muted mt-1">Private — only you can see this. It's never shown on your public profile.</p>
       </div>
       {!isClub && (
         <div>
