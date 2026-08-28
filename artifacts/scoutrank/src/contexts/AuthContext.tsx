@@ -23,7 +23,18 @@ interface AuthContextType extends AuthState {
   // "identifier" rather than "email" — accepts either an email or a
   // username now (see the implementation below).
   login: (identifier: string, password: string) => Promise<void>;
-  signup: (data: SignupData) => Promise<{ needsEmailConfirmation: boolean }>;
+  signup: (data: SignupData) => Promise<{ needsEmailConfirmation: boolean; userId: string }>;
+  // Alternative to clicking the email confirmation link — see the "or
+  // verify by text instead" option on the signup confirmation screen.
+  // sendSignupVerificationSms attaches the phone to the pending account
+  // (via the attach-signup-phone edge function, since the account has no
+  // session yet) and sends the SMS code; confirmSignupVerificationSms
+  // checks the code and, on success, logs the person straight in — same
+  // end result as confirming via email, just a different path there.
+  // NOTE: inert until a phone/SMS provider (e.g. Twilio) is configured in
+  // Supabase Auth settings — see the comment above attach-signup-phone.
+  sendSignupVerificationSms: (userId: string, phone: string) => Promise<void>;
+  confirmSignupVerificationSms: (phone: string, token: string) => Promise<void>;
   logout: () => Promise<void>;
   logoutAllDevices: () => Promise<void>;
   updateProfile: (data: Partial<Profile>) => Promise<void>;
@@ -284,7 +295,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState({ ...EMPTY_STATE, isLoading: false });
     }
 
-    return { needsEmailConfirmation };
+    return { needsEmailConfirmation, userId: signUpData.user?.id ?? '' };
+  }, [applySession]);
+
+  // ── Signup phone verification (alternative to the email link) ──
+  // Step 1: attach the phone number to the just-created (still
+  // unconfirmed, session-less) account via the edge function — this needs
+  // the service role, so it can't happen directly from the client. Step 2:
+  // trigger the actual SMS send, which IS a plain client-safe call once
+  // the phone is attached to a real user record.
+  const sendSignupVerificationSms = useCallback(async (userId: string, phone: string) => {
+    const { data, error: fnError } = await supabase.functions.invoke('attach-signup-phone', {
+      body: { userId, phone },
+    });
+    if (fnError || data?.error) {
+      throw new Error(data?.error || fnError?.message || 'Could not send a verification text to that number.');
+    }
+    const { error: otpError } = await supabase.auth.signInWithOtp({ phone });
+    if (otpError) throw otpError;
+  }, []);
+
+  // Step 3: check the code the person typed in. On success this returns a
+  // real session — same as clicking the email link, just arrived at a
+  // different way — so it logs them straight in.
+  const confirmSignupVerificationSms = useCallback(async (phone: string, token: string) => {
+    const { data, error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' });
+    if (error) throw error;
+    if (data.session) await applySession(data.session);
   }, [applySession]);
 
   // ── Logout ──
@@ -342,7 +379,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSuperAdmin = state.role === 'super_admin';
 
   return (
-    <AuthContext.Provider value={{ ...state, isAdmin, isSuperAdmin, login, signup, logout, logoutAllDevices, updateProfile, refreshProfile }}>
+    <AuthContext.Provider value={{ ...state, isAdmin, isSuperAdmin, login, signup, sendSignupVerificationSms, confirmSignupVerificationSms, logout, logoutAllDevices, updateProfile, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -7,15 +7,27 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { SPORT_OPTIONS } from '@/lib/sports';
 import { COUNTRIES } from '@/lib/locations';
 import { useAuth, type SignupData } from '@/contexts/AuthContext';
-import { ArrowLeft, ArrowRight, Eye, EyeOff, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Check, Phone } from 'lucide-react';
 
 
 export default function SignupPage() {
-  const { signup, isLoading } = useAuth();
+  const { signup, sendSignupVerificationSms, confirmSignupVerificationSms, isLoading } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [error, setError] = useState('');
   const [confirmEmailSent, setConfirmEmailSent] = useState(false);
+  // Set once signup() succeeds — needed by the "verify by text instead"
+  // path to attach a phone number to this specific pending account.
+  const [pendingUserId, setPendingUserId] = useState('');
+
+  // "Verify by text instead" — an alternative to clicking the email link.
+  // Inert until Twilio (or another SMS provider) is configured in
+  // Supabase; see the comment on sendSignupVerificationSms.
+  const [smsStage, setSmsStage] = useState<'closed' | 'phone' | 'code'>('closed');
+  const [smsPhone, setSmsPhone] = useState('');
+  const [smsCode, setSmsCode] = useState('');
+  const [smsBusy, setSmsBusy] = useState(false);
+  const [smsError, setSmsError] = useState('');
 
   // Form state
   const [form, setForm] = useState<SignupData>({
@@ -109,8 +121,9 @@ export default function SignupPage() {
     if (!validateStep()) { setError('Please fill in all required fields'); return; }
     if (step < steps.length - 1) { setStep(step + 1); return; }
     try {
-      const { needsEmailConfirmation } = await signup(form);
+      const { needsEmailConfirmation, userId } = await signup(form);
       if (needsEmailConfirmation) {
+        setPendingUserId(userId);
         setConfirmEmailSent(true);
       } else {
         navigate('/onboarding');
@@ -124,6 +137,34 @@ export default function SignupPage() {
           ? 'Something went wrong creating your account. Please try again, and if it keeps happening, check the browser console (F12) for details.'
           : rawMessage
       );
+    }
+  }
+
+  async function handleSendSmsCode() {
+    if (!smsPhone.trim()) { setSmsError('Enter a phone number first.'); return; }
+    setSmsBusy(true);
+    setSmsError('');
+    try {
+      await sendSignupVerificationSms(pendingUserId, smsPhone.trim());
+      setSmsStage('code');
+    } catch (err) {
+      setSmsError(err instanceof Error ? err.message : 'Could not send a code to that number. Please try again.');
+    } finally {
+      setSmsBusy(false);
+    }
+  }
+
+  async function handleConfirmSmsCode() {
+    if (!smsCode.trim()) { setSmsError('Enter the code you were texted.'); return; }
+    setSmsBusy(true);
+    setSmsError('');
+    try {
+      await confirmSignupVerificationSms(smsPhone.trim(), smsCode.trim());
+      navigate('/onboarding');
+    } catch (err) {
+      setSmsError(err instanceof Error ? err.message : 'That code didn\'t match. Please try again.');
+    } finally {
+      setSmsBusy(false);
     }
   }
 
@@ -166,6 +207,43 @@ export default function SignupPage() {
                 We sent a confirmation link to <span className="text-sr-silver">{form.email}</span>.
                 Confirm your email, then log in to finish setting up your profile.
               </p>
+
+              {smsStage === 'closed' && (
+                <button type="button" onClick={() => setSmsStage('phone')}
+                  className="mt-4 text-sm text-sr-purple-light hover:text-sr-purple transition-colors">
+                  Or verify by text instead
+                </button>
+              )}
+
+              {smsStage === 'phone' && (
+                <div className="mt-6 text-left">
+                  <label className="block text-sm font-medium text-sr-silver mb-1.5">Phone Number</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sr-text-muted" />
+                    <input type="tel" value={smsPhone} onChange={e => setSmsPhone(e.target.value)}
+                      className="input-dark pl-10" placeholder="e.g. +61 412 345 678" />
+                  </div>
+                  {smsError && <p className="text-red-400 text-xs mt-1.5">{smsError}</p>}
+                  <Button type="button" variant="brand" className="w-full mt-3" loading={smsBusy} onClick={handleSendSmsCode}>
+                    Send Code
+                  </Button>
+                </div>
+              )}
+
+              {smsStage === 'code' && (
+                <div className="mt-6 text-left">
+                  <p className="text-sr-text-muted text-sm mb-3">
+                    We texted a code to <span className="text-sr-silver">{smsPhone}</span>.
+                  </p>
+                  <label className="block text-sm font-medium text-sr-silver mb-1.5">Verification Code</label>
+                  <input type="text" inputMode="numeric" value={smsCode} onChange={e => setSmsCode(e.target.value)}
+                    className="input-dark" placeholder="6-digit code" />
+                  {smsError && <p className="text-red-400 text-xs mt-1.5">{smsError}</p>}
+                  <Button type="button" variant="brand" className="w-full mt-3" loading={smsBusy} onClick={handleConfirmSmsCode}>
+                    Verify
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
           <>
