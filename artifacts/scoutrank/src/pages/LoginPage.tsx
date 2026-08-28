@@ -92,7 +92,7 @@ export default function LoginPage() {
                   value={identifier}
                   onChange={e => setIdentifier(e.target.value)}
                   className="input-dark pl-10"
-                  placeholder="alexj"
+                  placeholder="Username"
                 />
               </div>
             </div>
