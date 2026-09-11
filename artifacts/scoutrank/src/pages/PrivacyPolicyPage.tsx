@@ -10,7 +10,7 @@ export default function PrivacyPolicyPage() {
       </Link>
 
       <h1 className="text-2xl font-bold text-white mb-2">Privacy Policy</h1>
-      <p className="text-xs text-sr-text-muted mb-8">Last updated: {new Date().toLocaleDateString()}</p>
+      <p className="text-xs text-sr-text-muted mb-8">Last updated: 11 September 2026 — reviewed by Coast Legal</p>
       <p className="text-sm text-sr-text-muted mb-8">Operated by Blaze Coppola, trading as ScoutRank (ABN 31870427228, Sole Trader).</p>
 
       <div className="space-y-6 text-sm leading-relaxed">

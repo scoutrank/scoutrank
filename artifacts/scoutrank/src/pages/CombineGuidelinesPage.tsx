@@ -37,7 +37,7 @@ export default function CombineGuidelinesPage() {
 
         <section>
           <h2 className="text-white font-semibold mb-2">Fees</h2>
-          <p>Any fee ScoutRank charges sellers is disclosed in-app before you list or complete a purchase.</p>
+          <p>Posting a listing costs a flat $5 fee, charged to you as the seller at the time of listing. Purchasing a listing costs the buyer the listed price plus a 10% transaction fee, added at checkout — you receive the listed price in full; the 10% is on top, not deducted from your payout.</p>
         </section>
 
         <section>

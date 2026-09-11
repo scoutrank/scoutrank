@@ -9,7 +9,7 @@ export default function TermsPage() {
       </Link>
 
       <h1 className="text-2xl font-bold text-white mb-2">Terms of Service</h1>
-      <p className="text-xs text-sr-text-muted mb-8">Last updated: {new Date().toLocaleDateString()}</p>
+      <p className="text-xs text-sr-text-muted mb-8">Last updated: 11 September 2026 — reviewed by Coast Legal</p>
 
       <div className="space-y-6 text-sm leading-relaxed">
         <section>
@@ -39,7 +39,8 @@ export default function TermsPage() {
         <section>
           <h2 className="text-white font-semibold mb-2">1. Who can use ScoutRank</h2>
           <p className="mb-2">ScoutRank is built for athletes, coaches, scouts, and parents to track and verify sporting performance. Some of our users are under 18 — the product is specifically designed with that in mind.</p>
-          <p className="mb-2">You must be at least 13 years old to create an account. If you are under 18, you confirm that a parent or guardian is aware of and consents to your use of ScoutRank, including the submission of photos and videos as evidence of your results. We may ask a parent or guardian to confirm this directly in some circumstances.</p>
+          <p className="mb-2">If you're in Australia, you must be at least 16 years old to create an account, consistent with Australia's social-media minimum-age law. If you're outside Australia, the minimum age that applies is whatever your own country's law sets — in many countries that's 13, but it varies, and it's your responsibility to meet the age requirement that applies where you live.</p>
+          <p className="mb-2">If you are under 18, you confirm that a parent or guardian is aware of and consents to your use of ScoutRank, including the submission of photos and videos as evidence of your results. We may ask a parent or guardian to confirm this directly in some circumstances.</p>
           <p>Coaches and scouts who wish to be shown to minor users without restriction must complete our verification process. Until verified, minor users will not see your profile or be able to message you.</p>
         </section>
 
@@ -67,7 +68,7 @@ export default function TermsPage() {
           <p className="mb-2">Becoming a seller requires approval, not just passing an automated check. We may reject or revoke seller status at our discretion, including after approval.</p>
           <p className="mb-2"><strong className="text-white">Listing standards.</strong> Sellers are solely responsible for ensuring their listing is accurate and complete, and for delivering what's described. You may not list anything illegal, use Combine to solicit or arrange payment outside ScoutRank/Stripe in order to avoid fees or dispute protections, misrepresent your qualifications or affiliation with any club, school, or organisation, or guarantee a specific recruitment outcome — sporting recruitment outcomes can never be guaranteed by a service provider.</p>
           <p className="mb-2"><strong className="text-white">Reviews.</strong> Buyers may be able to leave a rating or review of a completed transaction. ScoutRank does not independently verify that a review reflects an actual completed purchase, and a review reflects the reviewer's own opinion, not ScoutRank's.</p>
-          <p className="mb-2"><strong className="text-white">Fees.</strong> Any fee or commission ScoutRank charges sellers is disclosed in-app before you list or complete a purchase.</p>
+          <p className="mb-2"><strong className="text-white">Fees.</strong> Posting a listing on Combine costs a flat $5 fee, charged to the seller at the time of listing. Purchasing a listing costs the buyer the listed price plus a 10% transaction fee, added at checkout — the seller receives the listed price in full.</p>
           <p className="mb-2"><strong className="text-white">Minors and Combine.</strong> Only adult (18+) account holders may purchase or sell on Combine. If a listed service is intended for the benefit of a minor Athlete, the purchase must be made through a parent or guardian's account, not the minor's own account.</p>
           <p className="mb-2">Payouts are issued by ScoutRank staff and are not instant — we don't guarantee a particular payout timeline beyond what's stated in-app.</p>
           <p>Nothing in these Terms excludes, restricts, or modifies any consumer guarantee, right, or remedy under the Australian Consumer Law that cannot lawfully be excluded. Disputes between a buyer and seller are handled through our admin dispute process (buyer raises it in-app → seller responds → ScoutRank reviews and makes a final call, including refund where appropriate).</p>
