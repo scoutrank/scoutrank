@@ -85,7 +85,10 @@ export default function MarketplacePage() {
           </Link>
         </div>
       </div>
-      <p className="text-sm text-sr-text-muted mb-6">Training programs, coaching, and assessments from athletes and coaches on ScoutRank.</p>
+      <p className="text-sm text-sr-text-muted mb-6">
+        Training programs, coaching, and assessments from athletes and coaches on ScoutRank.{' '}
+        <Link to="/combine/guidelines" className="text-sr-purple-light hover:text-white">Marketplace guidelines</Link>
+      </p>
 
       {recommended.length > 0 && weakestAttribute && (
         <div className="mb-6 p-4 rounded-xl bg-gradient-to-r from-sr-purple/15 to-sr-blue/15 border border-sr-purple/30">

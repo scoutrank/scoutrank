@@ -17,6 +17,8 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const TermsPage = lazy(() => import('@/pages/TermsPage'));
 const PrivacyPolicyPage = lazy(() => import('@/pages/PrivacyPolicyPage'));
 const CommunityGuidelinesPage = lazy(() => import('@/pages/CommunityGuidelinesPage'));
+const BrandedContentPolicyPage = lazy(() => import('@/pages/BrandedContentPolicyPage'));
+const CombineGuidelinesPage = lazy(() => import('@/pages/CombineGuidelinesPage'));
 const ContactPage = lazy(() => import('@/pages/ContactPage'));
 const ParentViewConversationPage = lazy(() => import('@/pages/ParentViewConversationPage'));
 const PerformancePassportPage = lazy(() => import('@/pages/PerformancePassportPage'));
@@ -199,6 +201,8 @@ function AppRoutes() {
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/community-guidelines" element={<CommunityGuidelinesPage />} />
+      <Route path="/branded-content-policy" element={<BrandedContentPolicyPage />} />
+      <Route path="/combine/guidelines" element={<CombineGuidelinesPage />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/signup" element={isAuthenticated ? <Navigate to={authenticatedDest} /> : <SignupPage />} />
       <Route path="/signup/club" element={isAuthenticated ? <Navigate to={authenticatedDest} /> : <ClubSignupPage />} />

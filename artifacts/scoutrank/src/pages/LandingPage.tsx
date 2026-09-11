@@ -423,6 +423,7 @@ export default function LandingPage() {
             <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
             <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
             <Link to="/community-guidelines" className="hover:text-white transition-colors">Community Guidelines</Link>
+            <Link to="/branded-content-policy" className="hover:text-white transition-colors">Branded Content Policy</Link>
             <Link to="/contact" className="hover:text-white transition-colors">Contact</Link>
           </div>
           <p className="text-sm text-sr-text-muted">© 2026 ScoutRank. All rights reserved.</p>
